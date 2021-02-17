@@ -206,7 +206,8 @@ target_link_libraries (adapt PRIVATE distribution elements program_options trans
 
 target_link_libraries (basis PRIVATE matlab_utilities quadrature tensors)
 
-target_link_libraries (batch PRIVATE coefficients elements lib_dispatch pde tensors)
+target_link_libraries (batch PRIVATE coefficients elements lib_dispatch pde tensors slate MPI::MPI_CXX)
+target_compile_definitions(batch PRIVATE SLATE_NO_CUDA)
 
 target_link_libraries (boundary_conditions PRIVATE coefficients elements transformations
                        matlab_utilities fast_math )

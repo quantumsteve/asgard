@@ -959,7 +959,7 @@ void getrs(char *trans, int *n, int *nrhs, P *A, int *lda, int *ipiv, P *b,
   else
   { // not instantiated; should never be reached
     std::cerr << "getrs not implemented for non-floating types" << '\n';
-    assert(false);
+    expect(false);
   }
 }
 
@@ -990,7 +990,7 @@ void slate_gesv(int *n, int *nrhs, P *A, int *lda, int *ipiv, P *b, int *ldb,
   else
   { // not instantiated; should never be reached
     std::cerr << "gesv not implemented for non-floating types" << '\n';
-    tools::expect(false);
+    expect(false);
   }
 }
 

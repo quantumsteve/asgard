@@ -105,6 +105,7 @@ if (NOT ASGARD_BUILD_OPENBLAS)
   endif ()
 
   if (LINALG_LIBS)
+    list(REMOVE_DUPLICATES LINALG_LIBS)
     message (STATUS "LINALG libraries found: ${LINALG_LIBS}")
   elseif (LINALG_LIBS_FOUND AND NOT LINALG_LIBS)
     message (STATUS "LINALG libraries found, relying on compiler wrappers")

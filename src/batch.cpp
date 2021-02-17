@@ -10,6 +10,8 @@
 #endif
 #include <limits.h>
 
+#include "slate/slate.hh"
+
 // utilized as the primary data structure for other functions
 // within this component.
 template<typename P, resource resrc>
@@ -544,12 +546,14 @@ void build_system_matrix(PDE<P> const &pde, elements::table const &elem_table,
   expect(A.ncols() == A_size && A.nrows() == A_size);
 
   // copy coefficients to host for subsequent use
+  auto it = coef_cache.begin();
   for (int k = 0; k < pde.num_terms; ++k)
   {
     for (int d = 0; d < pde.num_dims; d++)
     {
-      coef_cache.insert(std::pair<key_type, val_type>(
-          key_type(k, d), pde.get_coefficients(k, d).clone_onto_host()));
+      coef_cache.emplace_hint(it, std::make_pair(k, d),
+                              pde.get_coefficients(k, d).clone_onto_host());
+      it = coef_cache.end();
     }
   }
 
@@ -613,6 +617,103 @@ void build_system_matrix(PDE<P> const &pde, elements::table const &elem_table,
             global_col + k_tmp.ncols() - 1);
 
         A_view = A_view + k_tmp;
+      }
+    }
+  }
+}
+
+// function to allocate and build implicit system.
+// given a problem instance (pde/elem table)
+// does not utilize batching, here because it shares underlying structure and
+// routines with explicit time advance
+template<typename P>
+void build_system_matrix(PDE<P> const &pde, elements::table const &elem_table,
+                         slate::Matrix<P> &A)
+{
+  // assume uniform degree for now
+  int const degree    = pde.get_dimensions()[0].get_degree();
+  int const elem_size = static_cast<int>(std::pow(degree, pde.num_dims));
+  int const A_size    = elem_size * elem_table.size();
+
+  using key_type = std::pair<int, int>;
+  using val_type = fk::matrix<P, mem_type::owner, resource::host>;
+  std::map<key_type, val_type> coef_cache;
+
+  expect(A.n() == A_size && A.m() == A_size);
+
+  // copy coefficients to host for subsequent use
+  auto it = coef_cache.begin();
+  for (int k = 0; k < pde.num_terms; ++k)
+  {
+    for (int d = 0; d < pde.num_dims; d++)
+    {
+      coef_cache.emplace_hint(it, std::make_pair(k, d),
+                              pde.get_coefficients(k, d).clone_onto_host());
+      it = coef_cache.end();
+    }
+  }
+
+  // loop over elements
+  for (auto i = 0; i < elem_table.size(); ++i)
+  {
+    // first, get linearized indices for this element
+    //
+    // calculate from the level/cell indices for each
+    // dimension
+    fk::vector<int> const coords = elem_table.get_coords(i);
+    expect(coords.size() == pde.num_dims * 2);
+    fk::vector<int> const elem_indices = linearize(coords);
+
+    int const global_row = i * elem_size;
+
+    // calculate the row portion of the
+    // operator position used for this
+    // element's gemm calls
+    fk::vector<int> const operator_row =
+        linear_coords_to_indices(pde, degree, elem_indices);
+
+    // loop over connected elements. for now, we assume
+    // full connectivity
+    for (int j = 0; j < elem_table.size(); ++j)
+    {
+      // get linearized indices for this connected element
+      fk::vector<int> const coords_nD = elem_table.get_coords(j);
+      expect(coords_nD.size() == pde.num_dims * 2);
+      fk::vector<int> const connected_indices = linearize(coords_nD);
+
+      // calculate the col portion of the
+      // operator position used for this
+      // element's gemm calls
+      fk::vector<int> const operator_col =
+          linear_coords_to_indices(pde, degree, connected_indices);
+
+      for (int k = 0; k < pde.num_terms; ++k)
+      {
+        std::vector<fk::matrix<P>> kron_vals;
+        fk::matrix<P> kron0(1, 1);
+        kron0(0, 0) = 1.0;
+        kron_vals.push_back(kron0);
+        for (int d = 0; d < pde.num_dims; d++)
+        {
+          fk::matrix<P, mem_type::view> op_view = fk::matrix<P, mem_type::view>(
+              coef_cache[key_type(k, d)], operator_row(d),
+              operator_row(d) + degree - 1, operator_col(d),
+              operator_col(d) + degree - 1);
+          fk::matrix<P> k_new = kron_vals[d].kron(op_view);
+          kron_vals.push_back(k_new);
+        }
+
+        // calculate the position of this element in the
+        // global system matrix
+        int const global_col = j * elem_size;
+        auto const &k_tmp    = kron_vals.back();
+        auto k_tmp_slate     = slate::Matrix<P>::fromLAPACK(
+            k_tmp.ncols(), k_tmp.nrows(), k_tmp.data(), k_tmp.nrows(),
+            k_tmp.ncols(), 1, 1, MPI_COMM_WORLD);
+        auto A_view = A.slice(global_row, global_row + k_tmp.nrows() - 1,
+                              global_col, global_col + k_tmp.ncols() - 1);
+
+        slate::geadd(static_cast<P>(1.),A_view,static_cast<P>(1.),k_tmp_slate);
       }
     }
   }
@@ -701,6 +802,13 @@ template void build_system_matrix(PDE<double> const &pde,
 template void build_system_matrix(PDE<float> const &pde,
                                   elements::table const &elem_table,
                                   fk::matrix<float> &A);
+
+template void build_system_matrix(PDE<double> const &pde,
+                                  elements::table const &elem_table,
+                                  slate::Matrix<double> &A);
+template void build_system_matrix(PDE<float> const &pde,
+                                  elements::table const &elem_table,
+                                  slate::Matrix<float> &A);
 
 template class batch_chain<double, resource::device, chain_method::realspace>;
 template class batch_chain<double, resource::host, chain_method::realspace>;
