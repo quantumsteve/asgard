@@ -713,7 +713,7 @@ void build_system_matrix(PDE<P> const &pde, elements::table const &elem_table,
         auto A_view = A.slice(global_row, global_row + k_tmp.nrows() - 1,
                               global_col, global_col + k_tmp.ncols() - 1);
 
-        slate::geadd(static_cast<P>(1.),A_view,static_cast<P>(1.),k_tmp_slate);
+        slate::geadd(P{1.},A_view,P{1.},k_tmp_slate);
       }
     }
   }
