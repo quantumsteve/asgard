@@ -5,12 +5,12 @@
 #include "tensors.hpp"
 #include "tools.hpp"
 
+#include "slate/slate.hh"
+
 #ifdef ASGARD_USE_OPENMP
 #include <omp.h>
 #endif
 #include <limits.h>
-
-#include "slate/slate.hh"
 
 // utilized as the primary data structure for other functions
 // within this component.

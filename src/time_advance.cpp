@@ -9,6 +9,8 @@
 #include "tools.hpp"
 #include <limits.h>
 
+#include "slate/slate.hh"
+
 namespace time_advance
 {
 template<typename P>
@@ -336,6 +338,110 @@ implicit_advance(PDE<P> const &pde,
     return fx;
     break;
   }
+  return x;
+}
+
+// this function executes an implicit time step using the current solution
+// vector x. on exit, the next solution vector is stored in fx.
+template<typename P>
+fk::vector<P>
+implicit_advance_slate(PDE<P> const &pde,
+                 adapt::distributed_grid<P> const &adaptive_grid,
+                 basis::wavelet_transform<P, resource::host> const &transformer,
+                 std::array<unscaled_bc_parts<P>, 2> const &unscaled_parts,
+                 fk::vector<P> const &x_orig, P const time, bool const update_system)
+{
+  expect(time >= 0);
+
+  static std::vector<int> ipiv;
+  static bool first_time = true;
+
+  auto const &table   = adaptive_grid.get_table();
+  auto const dt       = pde.get_dt();
+  int const degree    = pde.get_dimensions()[0].get_degree();
+  int const elem_size = static_cast<int>(std::pow(degree, pde.num_dims));
+  int const A_size    = elem_size * table.size();
+
+
+  static slate::Matrix<P> A(A_size, A_size, A_size, A_size, 1, 1, MPI_COMM_WORLD);
+
+  fk::vector<P> x(x_orig);
+
+  if (pde.num_sources > 0)
+  {
+    auto const sources =
+        get_sources(pde, adaptive_grid, transformer, time + dt);
+    fm::axpy(sources, x, dt);
+  }
+
+  /* add the boundary condition */
+  auto const &grid = adaptive_grid.get_subgrid(get_rank());
+
+  auto const bc = boundary_conditions::generate_scaled_bc(
+      unscaled_parts[0], unscaled_parts[1], pde, grid.row_start, grid.row_stop,
+      time + dt);
+  fm::axpy(bc, x, dt);
+
+  if (first_time || update_system)
+  {
+    first_time = false;
+
+    //A = slate::Matrix<P>(A_size, A_size, A_size, A_size, 1, 1, MPI_COMM_WORLD);
+    A.insertLocalTiles(); 
+    build_system_matrix(pde, table, A);
+
+    // AA = I - dt*A;
+    for (int j = 0; j < A.nt(); ++j)
+    {
+      for (int i = 0; i < A.mt(); ++i)
+      {
+        if (A.tileIsLocal(i, j))
+        {
+          auto T = A(i, j);
+          for (int64_t jj = 0; jj < T.nb(); ++jj)
+          {
+            for (int64_t ii = 0; ii < T.mb(); ++ii)
+            {
+              T.at(ii , jj) = -1.*dt*T.at(ii, jj);
+            }
+          } 
+        }
+      }
+    }
+
+    for (int i = 0; i < A.nt(); ++i)
+    {
+      if (A.tileIsLocal(i, i)) {
+        auto T = A(i, i);
+        for (int64_t ii = 0; ii < T.nb(); ++ii) {
+          T.at(ii, ii) = 1.0 - T.at(ii, ii);
+        }
+      }
+    }  
+
+    if (ipiv.size() != static_cast<unsigned long>(A.m()))
+      ipiv.resize(A.m());
+    fm::gesv(A, x, ipiv);
+    size_t index = 0;
+    for (int64_t j = 0; j < A.nt (); ++j) {
+      for (int64_t i = 0; i < A.mt (); ++i) {
+        if (A.tileIsLocal(i, j)) {
+          // get data - values in the local tile
+          auto tile = A( i, j );
+          auto tiledata = tile.data();
+          for (int64_t jj = 0; jj < tile.nb(); ++jj) {
+            for (int64_t ii = 0; ii < tile .mb(); ++ii) {
+              x[index] = tiledata[ii + jj*tile.stride()];
+            }
+          }
+        }
+      }
+    }
+    return x;
+
+  } // end first time/update system
+
+  fm::getrs(A, x, ipiv);
   return x;
 }
 

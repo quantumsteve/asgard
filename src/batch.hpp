@@ -6,6 +6,11 @@
 #include <array>
 #include <numeric>
 
+namespace slate {
+  template<typename P>
+  class Matrix;
+}
+
 // wrapper around an array of pointers to matrices or
 // vectors for a call to batch gemm/gemv; i.e., the class
 // represents the information for a batch operand
@@ -146,3 +151,6 @@ private:
 template<typename P>
 void build_system_matrix(PDE<P> const &pde, elements::table const &elem_table,
                          fk::matrix<P> &A);
+template<typename P>
+void build_system_matrix(PDE<P> const &pde, elements::table const &elem_table,
+                         slate::Matrix<P> &A);
