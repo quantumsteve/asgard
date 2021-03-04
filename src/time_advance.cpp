@@ -362,15 +362,13 @@ implicit_advance_slate(PDE<P> const &pde,
   int const elem_size = static_cast<int>(std::pow(degree, pde.num_dims));
   int const A_size    = elem_size * table.size();
 
-
   static slate::Matrix<P> A(A_size, A_size, A_size, A_size, 1, 1, MPI_COMM_WORLD);
 
   fk::vector<P> x(x_orig);
 
   if (pde.num_sources > 0)
   {
-    auto const sources =
-        get_sources(pde, adaptive_grid, transformer, time + dt);
+    auto const sources = get_sources(pde, adaptive_grid, transformer, time + dt);
     fm::axpy(sources, x, dt);
   }
 
@@ -382,11 +380,11 @@ implicit_advance_slate(PDE<P> const &pde,
       time + dt);
   fm::axpy(bc, x, dt);
 
+  slate::Matrix<P> x_slate(x.size(), 1, A_size, 1, 1, 1, MPI_COMM_WORLD);
   if (first_time || update_system)
   {
     first_time = false;
 
-    //A = slate::Matrix<P>(A_size, A_size, A_size, A_size, 1, 1, MPI_COMM_WORLD);
     A.insertLocalTiles(); 
     build_system_matrix(pde, table, A);
 
@@ -423,15 +421,16 @@ implicit_advance_slate(PDE<P> const &pde,
       ipiv.resize(A.m());
     fm::gesv(A, x, ipiv);
     size_t index = 0;
-    for (int64_t j = 0; j < A.nt (); ++j) {
-      for (int64_t i = 0; i < A.mt (); ++i) {
+    for (int64_t j = 0; j < A.nt(); ++j) {
+      for (int64_t i = 0; i < A.mt(); ++i) {
         if (A.tileIsLocal(i, j)) {
           // get data - values in the local tile
-          auto tile = A( i, j );
+          auto tile = A(i, j);
           auto tiledata = tile.data();
           for (int64_t jj = 0; jj < tile.nb(); ++jj) {
             for (int64_t ii = 0; ii < tile .mb(); ++ii) {
               x[index] = tiledata[ii + jj*tile.stride()];
+              ++index;
             }
           }
         }
