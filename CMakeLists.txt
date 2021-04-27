@@ -395,6 +395,7 @@ if (ASGARD_BUILD_TESTS)
     adapt
     distribution
     time_advance
+    fast-math
   )
 
 
@@ -424,6 +425,7 @@ if (ASGARD_BUILD_TESTS)
         add_test (NAME ${component}-test-mpi
                   COMMAND mpirun -n ${test_ranks} ./${component}-tests
                   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR} )
+	set_tests_properties (${component}-test-mpi PROPERTIES PROCESSORS ${test_ranks})
       endif()
     endif ()
 
