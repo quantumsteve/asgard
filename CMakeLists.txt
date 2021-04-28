@@ -395,7 +395,7 @@ if (ASGARD_BUILD_TESTS)
     adapt
     distribution
     time_advance
-    fast-math
+    fast_math
   )
 
 
