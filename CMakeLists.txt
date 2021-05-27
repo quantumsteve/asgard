@@ -333,6 +333,9 @@ target_link_libraries (tensors PRIVATE lib_dispatch)
 if (ASGARD_USE_CUDA)
   target_link_libraries (tensors PRIVATE ${CUDA_LIBRARIES})
 endif ()
+if (ASGARD_USE_SCALAPACK)
+  add_compile_definitions (ASGARD_USE_SCALAPACK)
+endif ()
 
 target_link_libraries (time_advance PRIVATE adapt fast_math pde kronmult solver tensors tools boundary_conditions
                                     INTERFACE elements)

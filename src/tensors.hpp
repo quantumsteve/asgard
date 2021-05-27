@@ -12,6 +12,16 @@
 #include <string>
 #include <vector>
 
+#ifdef ASGARD_USE_SCALAPACK
+#include "cblacs_grid.hpp"
+
+extern "C"
+{
+  void descinit_(int *desc, int *m, int *n, int *mb, int *nb, int *irsrc,
+                 int *icsrc, int *ictxt, int *lld, int *info);
+}
+#endif
+
 /* tolerance for answer comparisons */
 #define TOL std::numeric_limits<P>::epsilon() * 2
 
@@ -104,7 +114,7 @@ public:
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   vector();
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
-  explicit vector(int const size);
+  explicit vector(int const size, std::shared_ptr<cblacs_grid> grid = std::shared_ptr<cblacs_grid>() );
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   vector(std::initializer_list<P> list);
   template<mem_type m_ = mem, typename = enable_for_owner<m_>,
@@ -323,7 +333,9 @@ public:
 
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   int get_num_views() const;
-
+#ifdef ASGARD_USE_SCALAPACK
+  int* get_desc() const { return desc_.data();}
+#endif
 private:
   // const/nonconst view constructors delegate to this private constructor
   // delegated is a dummy variable to enable resolution
@@ -343,6 +355,10 @@ private:
   P *data_;  //< pointer to elements
   int size_; //< dimension
   std::shared_ptr<int> ref_count_ = nullptr;
+#ifdef ASGARD_USE_SCALAPACK
+  std::shared_ptr<cblacs_grid> grid_;
+  std::array<int, 9> desc_;
+#endif
 };
 
 template<typename P, mem_type mem, resource resrc>
@@ -803,8 +819,8 @@ fk::vector<P, mem, resrc>::vector()
 // but this is probably slower if needing to declare in a perf. critical region
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
-fk::vector<P, mem, resrc>::vector(int const size)
-    : size_{size}, ref_count_{std::make_shared<int>(0)}
+fk::vector<P, mem, resrc>::vector(int const size, std::shared_ptr<cblacs_grid> grid)
+    : size_{size}, ref_count_{std::make_shared<int>(0)}, grid_{std::move(grid)}
 {
   expect(size >= 0);
 
@@ -815,6 +831,13 @@ fk::vector<P, mem, resrc>::vector(int const size)
   else
   {
     allocate_device(data_, size_);
+  }
+  if(grid_)
+  {
+    int i_zero{0}, i_one{1}, info;
+    int ictxt = grid_->get_context();
+    int lld   = std::max(1, grid_->local_rows(1, size_));
+    descinit_(desc_.data(), &size_, &i_one, &size_, &i_one, &i_zero, &i_zero, &ictxt, &lld, &info);
   }
 }
 
