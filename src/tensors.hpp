@@ -116,6 +116,8 @@ public:
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   explicit vector(int const size, std::shared_ptr<cblacs_grid> grid = std::shared_ptr<cblacs_grid>() );
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
+  explicit vector(int const size, int const nb, std::shared_ptr<cblacs_grid> grid);
+  template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   vector(std::initializer_list<P> list);
   template<mem_type m_ = mem, typename = enable_for_owner<m_>,
            resource r_ = resrc, typename = enable_for_host<r_>>
@@ -358,6 +360,7 @@ private:
 #ifdef ASGARD_USE_SCALAPACK
   std::shared_ptr<cblacs_grid> grid_;
   std::array<int, 9> desc_;
+  int local_size_;
 #endif
 };
 
@@ -836,8 +839,34 @@ fk::vector<P, mem, resrc>::vector(int const size, std::shared_ptr<cblacs_grid> g
   {
     int i_zero{0}, i_one{1}, info;
     int ictxt = grid_->get_context();
-    int lld   = std::max(1, grid_->local_rows(1, size_));
+    int lld   = std::max(1, grid_->local_rows(1, size_, false));
     descinit_(desc_.data(), &size_, &i_one, &size_, &i_one, &i_zero, &i_zero, &ictxt, &lld, &info);
+  }
+}
+
+template<typename P, mem_type mem, resource resrc>
+template<mem_type, typename>
+fk::vector<P, mem, resrc>::vector(int const size, int const mb, std::shared_ptr<cblacs_grid> grid)
+    : size_{size}, ref_count_{std::make_shared<int>(0)}, grid_{std::move(grid)}
+{
+  expect(size >= 0);
+  expect(mb >= 0);
+  if(grid_)
+  {
+    int i_zero{0}, i_one{1}, info;
+    int ictxt = grid_->get_context();
+    int lld   = std::max(1, grid_->local_rows(size, mb));
+    descinit_(desc_.data(), &size_, &i_one, &mb, &i_one, &i_zero, &i_zero, &ictxt, &lld, &info);
+  }
+
+  local_size_ = grid_->local_rows(size_, mb);
+  if constexpr (resrc == resource::host)
+  {
+    data_ = new P[local_size_]();
+  }
+  else
+  {
+    allocate_device(data_, local_size_);
   }
 }
 
