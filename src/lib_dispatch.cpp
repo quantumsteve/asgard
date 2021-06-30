@@ -985,7 +985,8 @@ void scalapack_gesv(int *n, int *nrhs, P *A, int *lda, int *ipiv, P *b,
   expect(*lda >= 1);
   expect(*n >= 0);
 
-  parallel_solver<P> psolver;
+  auto grid = std::make_shared<cblacs_grid>();
+  parallel_solver<P> psolver(grid);
 
   fk::matrix<P> A_distr;
   psolver.resize(A_distr, *n, *n);
@@ -994,23 +995,23 @@ void scalapack_gesv(int *n, int *nrhs, P *A, int *lda, int *ipiv, P *b,
   psolver.descinit_distr(descA_distr, *n, *n);
   psolver.scatter_matrix(A, descA, A_distr.data(), descA_distr, *n, *n);
 
-  fk::vector<P> B_distr;
+  fk::vector<P> B_distr(0, 256, grid);
   psolver.resize(B_distr, *n);
-  int descB[DESC_VARS::DLEN_], descB_distr[DESC_VARS::DLEN_];
+  int descB[DESC_VARS::DLEN_]; //, descB_distr[DESC_VARS::DLEN_];
   psolver.descinit(descB, 1, *n);
-  psolver.descinit_distr(descB_distr, 1, *n);
-  psolver.scatter_matrix(b, descB, B_distr.data(), descB_distr, 1, *n);
+  // psolver.descinit_distr(descB_distr, 1, *n);
+  psolver.scatter_matrix(b, descB, B_distr.data(), B_distr.get_desc(), 1, *n);
 
   int mp{1}, nq{1}, i_one{1};
   if constexpr (std::is_same<P, double>::value)
   {
     pdgesv_(n, nrhs, A_distr.data(), &mp, &nq, descA_distr, ipiv,
-            B_distr.data(), &i_one, &nq, descB_distr, info);
+            B_distr.data(), &i_one, &nq, B_distr.get_desc(), info);
   }
   else if constexpr (std::is_same<P, float>::value)
   {
     psgesv_(n, nrhs, A_distr.data(), &mp, &nq, descA_distr, ipiv,
-            B_distr.data(), &i_one, &nq, descB_distr, info);
+            B_distr.data(), &i_one, &nq, B_distr.get_desc(), info);
   }
   else
   { // not instantiated; should never be reached
@@ -1018,7 +1019,7 @@ void scalapack_gesv(int *n, int *nrhs, P *A, int *lda, int *ipiv, P *b,
     expect(false);
   }
   psolver.gather_matrix(A, descA, A_distr.data(), descA_distr, *n, *n);
-  psolver.gather_matrix(b, descB, B_distr.data(), descB_distr, 1, *n);
+  psolver.gather_matrix(b, descB, B_distr.data(), B_distr.get_desc(), 1, *n);
 }
 
 template<typename P>
@@ -1038,7 +1039,8 @@ void scalapack_getrs(char *trans, int *n, int *nrhs, P *A, int *lda, int *ipiv,
   expect(*lda >= 1);
   expect(*n >= 0);
 
-  parallel_solver<P> psolver;
+  auto grid = std::make_shared<cblacs_grid>();
+  parallel_solver<P> psolver(grid);
 
   fk::matrix<P> A_distr;
   psolver.resize(A_distr, *n, *n);

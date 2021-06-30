@@ -116,7 +116,7 @@ public:
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   explicit vector(int const size, std::shared_ptr<cblacs_grid> grid = std::shared_ptr<cblacs_grid>() );
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
-  explicit vector(int const size, int const nb, std::shared_ptr<cblacs_grid> grid);
+  explicit vector(int const size, int mb, std::shared_ptr<cblacs_grid> grid);
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   vector(std::initializer_list<P> list);
   template<mem_type m_ = mem, typename = enable_for_owner<m_>,
@@ -336,7 +336,7 @@ public:
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   int get_num_views() const;
 #ifdef ASGARD_USE_SCALAPACK
-  int* get_desc() const { return desc_.data();}
+  int *get_desc() { return desc_.data(); }
 #endif
 private:
   // const/nonconst view constructors delegate to this private constructor
@@ -360,7 +360,7 @@ private:
 #ifdef ASGARD_USE_SCALAPACK
   std::shared_ptr<cblacs_grid> grid_;
   std::array<int, 9> desc_;
-  int local_size_;
+  int mb_, local_size_;
 #endif
 };
 
@@ -846,8 +846,10 @@ fk::vector<P, mem, resrc>::vector(int const size, std::shared_ptr<cblacs_grid> g
 
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
-fk::vector<P, mem, resrc>::vector(int const size, int const mb, std::shared_ptr<cblacs_grid> grid)
-    : size_{size}, ref_count_{std::make_shared<int>(0)}, grid_{std::move(grid)}
+fk::vector<P, mem, resrc>::vector(int const size, int mb,
+                                  std::shared_ptr<cblacs_grid> grid)
+    : size_{size}, mb_{mb}, local_size_{size},
+      ref_count_{std::make_shared<int>(0)}, grid_{std::move(grid)}
 {
   expect(size >= 0);
   expect(mb >= 0);
@@ -857,9 +859,9 @@ fk::vector<P, mem, resrc>::vector(int const size, int const mb, std::shared_ptr<
     int ictxt = grid_->get_context();
     int lld   = std::max(1, grid_->local_rows(size, mb));
     descinit_(desc_.data(), &size_, &i_one, &mb, &i_one, &i_zero, &i_zero, &ictxt, &lld, &info);
+    local_size_ = grid_->local_rows(size_, mb);
   }
 
-  local_size_ = grid_->local_rows(size_, mb);
   if constexpr (resrc == resource::host)
   {
     data_ = new P[local_size_]();
@@ -1513,38 +1515,51 @@ void fk::vector<P, mem, resrc>::dump_to_octave(char const *filename) const
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
 fk::vector<P, mem_type::owner, resrc> &
-fk::vector<P, mem, resrc>::resize(int const new_size)
+fk::vector<P, mem, resrc>::resize(int new_size)
 {
   expect(new_size >= 0);
   if (new_size == this->size())
     return *this;
   P *old_data{data_};
 
+  if (grid_)
+  {
+    int i_zero{0}, i_one{1}, info;
+    int ictxt = grid_->get_context();
+    int lld   = std::max(1, grid_->local_rows(new_size, mb_));
+    descinit_(desc_.data(), &new_size, &i_one, &mb_, &i_one, &i_zero, &i_zero,
+              &ictxt, &lld, &info);
+    local_size_ = grid_->local_rows(new_size, mb_);
+  }
+  else
+  {
+    local_size_ = new_size;
+  }
+
   if constexpr (resrc == resource::host)
   {
-    data_ = new P[new_size]();
-    if (size() > 0 && new_size > 0)
+    data_ = new P[local_size_]();
+    if (size() > 0 && local_size_ > 0)
     {
-      if (size() < new_size)
+      if (size() < local_size_)
         std::memcpy(data_, old_data, size() * sizeof(P));
       else
-        std::memcpy(data_, old_data, new_size * sizeof(P));
+        std::memcpy(data_, old_data, local_size_ * sizeof(P));
     }
     delete[] old_data;
   }
   else
   {
-    allocate_device(data_, new_size);
-    if (size() > 0 && new_size > 0)
+    allocate_device(data_, local_size_);
+    if (size() > 0 && local_size_ > 0)
     {
-      if (size() < new_size)
+      if (size() < local_size_)
         copy_on_device(data_, old_data, size());
       else
-        copy_on_device(data_, old_data, new_size);
+        copy_on_device(data_, old_data, local_size_);
     }
     delete_device(old_data);
   }
-
   size_ = new_size;
   return *this;
 }

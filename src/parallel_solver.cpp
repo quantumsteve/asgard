@@ -66,8 +66,8 @@ template<typename P>
 void parallel_solver<P>::descinit(int *descA, int n, int m)
 {
   int i_zero{0}, info;
-  int ictxt = grid_.get_context();
-  int lld   = std::max(1, grid_.local_rows(m, n, false));
+  int ictxt = grid_->get_context();
+  int lld   = std::max(1, grid_->local_rows(m, n, false));
   descinit_(descA, &m, &n, &m, &n, &i_zero, &i_zero, &ictxt, &lld, &info);
 }
 
@@ -75,8 +75,8 @@ template<typename P>
 void parallel_solver<P>::descinit_distr(int *descA_distr, int n, int m)
 {
   int i_zero{0}, info;
-  int ictxt = grid_.get_context();
-  int lld   = std::max(1, grid_.local_rows(m, mb_));
+  int ictxt = grid_->get_context();
+  int lld   = std::max(1, grid_->local_rows(m, mb_));
   descinit_(descA_distr, &m, &n, &mb_, &nb_, &i_zero, &i_zero, &ictxt, &lld,
             &info);
 }
@@ -84,8 +84,8 @@ void parallel_solver<P>::descinit_distr(int *descA_distr, int n, int m)
 template<typename P>
 void parallel_solver<P>::resize(fk::matrix<P> &A_distr, int n, int m)
 {
-  int mp = grid_.local_rows(m, mb_);
-  int nq = grid_.local_cols(n, nb_);
+  int mp = grid_->local_rows(m, mb_);
+  int nq = grid_->local_cols(n, nb_);
   if (mp == 0 || nq == 0)
   {
     mp = 0;
@@ -97,7 +97,7 @@ void parallel_solver<P>::resize(fk::matrix<P> &A_distr, int n, int m)
 template<typename P>
 void parallel_solver<P>::resize(fk::vector<P> &A_distr, int m)
 {
-  int mp = grid_.local_rows(m, mb_);
+  int mp = grid_->local_rows(m, mb_);
   A_distr.resize(mp);
 }
 

@@ -25,7 +25,8 @@ TEMPLATE_TEST_CASE("", "[parallel_solver]", float, double)
 
   fk::vector<TestType> const B{0., 0., 2., 2.};
 
-  parallel_solver<TestType> solver(2, 2);
+  auto grid = std::make_shared<cblacs_grid>();
+  parallel_solver<TestType> solver(grid, 2, 2);
 
   int n = 4;
   int m = 4;
