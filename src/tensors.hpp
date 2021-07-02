@@ -848,8 +848,8 @@ template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
 fk::vector<P, mem, resrc>::vector(int const size, int mb,
                                   std::shared_ptr<cblacs_grid> grid)
-    : size_{size}, mb_{mb}, local_size_{size},
-      ref_count_{std::make_shared<int>(0)}, grid_{std::move(grid)}
+    : size_{size}, ref_count_{std::make_shared<int>(0)}, grid_{std::move(grid)},
+      mb_{mb}, local_size_{size}
 {
   expect(size >= 0);
   expect(mb >= 0);
