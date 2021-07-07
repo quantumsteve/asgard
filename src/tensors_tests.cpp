@@ -884,7 +884,14 @@ TEMPLATE_TEST_CASE("fk::vector utilities", "[tensors]", int)
     auto grid = std::make_shared<cblacs_grid>();
     fk::vector<TestType> test_distributed(8, 2, grid);
     REQUIRE(test_distributed.size() == 8);
-    REQUIRE(test_distributed.local_size() == 2);
+    if (get_num_ranks() == 1)
+    {
+      REQUIRE(test_distributed.local_size() == 8);
+    }
+    else
+    {
+      REQUIRE(test_distributed.local_size() == 4);
+    }
   }
 
   SECTION("vector concatenation")

@@ -861,8 +861,6 @@ fk::vector<P, mem, resrc>::vector(int const size, int mb,
     int lld   = std::max(1, grid_->local_rows(size, mb));
     int myid, numproc;
     Cblacs_pinfo(&myid, &numproc);
-    std::cout << "meow? " << myid << " " << lld << " "
-              << grid_->local_rows(size_, mb) << '\n';
     descinit_(desc_.data(), &size_, &i_one, &mb, &i_one, &i_zero, &i_zero, &ictxt, &lld, &info);
     local_size_ = grid_->local_rows(size_, mb);
   }
