@@ -17,16 +17,15 @@ extern "C"
 cblacs_grid::cblacs_grid()
 {
   int i_negone{-1}, i_zero{0};
-  int myid, numproc;
-  Cblacs_pinfo(&myid, &numproc);
-  for (npcol_ = std::sqrt(numproc) + 1; npcol_ >= 1; npcol_--)
+  Cblacs_pinfo(&myid_, &numproc_);
+  for (npcol_ = std::sqrt(numproc_) + 1; npcol_ >= 1; npcol_--)
   {
-    nprow_        = numproc / npcol_;
-    bool is_found = ((nprow_ * npcol_) == numproc);
+    nprow_        = numproc_ / npcol_;
+    bool is_found = ((nprow_ * npcol_) == numproc_);
     if (is_found)
       break;
   };
-  expect((nprow_ >= 1) && (npcol_ >= 1) && (nprow_ * npcol_ == numproc));
+  expect((nprow_ >= 1) && (npcol_ >= 1) && (nprow_ * npcol_ == numproc_));
   Cblacs_get(i_negone, i_zero, &ictxt_);
   Cblacs_gridinit(&ictxt_, "R", nprow_, npcol_);
   Cblacs_gridinfo(ictxt_, &nprow_, &npcol_, &myrow_, &mycol_);
@@ -37,7 +36,7 @@ int cblacs_grid::local_rows(int m, int mb, bool distributed)
   int i_zero{0}, i_one{1};
   if (distributed)
   {
-    return numroc_(&m, &mb, &myrow_, &i_zero, &nprow_);
+    return numroc_(&m, &mb, &myid_, &i_zero, &nprow_);
   }
   else
   {

@@ -6,19 +6,20 @@
 #endif
 
 #include "lib_dispatch.hpp"
+//#include "distribution.hpp"
 #include "tools.hpp"
 
+#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
-
 #ifdef ASGARD_USE_SCALAPACK
 #include "cblacs_grid.hpp"
-
 extern "C"
 {
   void descinit_(int *desc, int *m, int *n, int *mb, int *nb, int *irsrc,
                  int *icsrc, int *ictxt, int *lld, int *info);
+  void Cblacs_pinfo(int *, int *);
 }
 #endif
 
@@ -271,7 +272,7 @@ public:
   // basic queries to private data
   //
   int size() const { return size_; }
-
+  int local_size() const { return local_size_; }
   // just get a pointer. cannot deref/assign. for e.g. blas
   // use subscript operators for general purpose access
   // this can be offsetted for views
@@ -858,6 +859,10 @@ fk::vector<P, mem, resrc>::vector(int const size, int mb,
     int i_zero{0}, i_one{1}, info;
     int ictxt = grid_->get_context();
     int lld   = std::max(1, grid_->local_rows(size, mb));
+    int myid, numproc;
+    Cblacs_pinfo(&myid, &numproc);
+    std::cout << "meow? " << myid << " " << lld << " "
+              << grid_->local_rows(size_, mb) << '\n';
     descinit_(desc_.data(), &size_, &i_one, &mb, &i_one, &i_zero, &i_zero, &ictxt, &lld, &info);
     local_size_ = grid_->local_rows(size_, mb);
   }

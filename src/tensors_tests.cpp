@@ -1,3 +1,4 @@
+#include "distribution.hpp"
 #include "tensors.hpp"
 #include "tests_general.hpp"
 #include <fstream>
@@ -11,6 +12,16 @@
 // note using widening conversions to floating point type in order to use same
 // tests for integer type
 // FIXME look for another way to do this
+
+struct distribution_test_init
+{
+  distribution_test_init() { initialize_distribution(); }
+  ~distribution_test_init() { finalize_distribution(); }
+};
+
+#ifdef ASGARD_USE_MPI
+static distribution_test_init const distrib_test_info;
+#endif
 
 TEMPLATE_TEST_CASE("fk::vector interface: constructors, copy/move", "[tensors]",
                    float, double, int)
@@ -40,12 +51,12 @@ TEMPLATE_TEST_CASE("fk::vector interface: constructors, copy/move", "[tensors]",
     REQUIRE(test == zeros);
     // REQUIRE(test_v == zeros);
 
-    auto grid = std::make_shared<cblacs_grid>();
+    /*auto grid = std::make_shared<cblacs_grid>();
     fk::vector<TestType> const test_w_grid(5, grid);
     REQUIRE(test_w_grid == test);
 
     fk::vector<TestType> const test_w_grid_mb(5, 256, grid);
-    REQUIRE(test_w_grid_mb == test);
+    REQUIRE(test_w_grid_mb == test);*/
   }
   SECTION("constructor from list initialization")
   {
@@ -744,7 +755,7 @@ TEMPLATE_TEST_CASE("fk::vector operators", "[tensors]", double, float, int)
   }
 } // end fk::vector operators
 
-TEMPLATE_TEST_CASE("fk::vector utilities", "[tensors]", double, float, int)
+TEMPLATE_TEST_CASE("fk::vector utilities", "[tensors]", int)
 {
   fk::vector<TestType> const gold{2, 3, 4, 5, 6};
   fk::vector<TestType> gold_copy(gold);
@@ -807,42 +818,46 @@ TEMPLATE_TEST_CASE("fk::vector utilities", "[tensors]", double, float, int)
   }
   SECTION("dump to octave")
   {
-    gold.dump_to_octave("test_out.dat");
-    gold_v.dump_to_octave("test_out_v.dat");
-    gold_cv.dump_to_octave("test_out_cv.dat");
-
-    std::ifstream data_stream("test_out.dat");
-    std::ifstream data_stream_v("test_out_v.dat");
-    std::ifstream data_stream_cv("test_out_cv.dat");
-
-    std::string const test_string((std::istreambuf_iterator<char>(data_stream)),
-                                  std::istreambuf_iterator<char>());
-    std::string const test_string_v(
-        (std::istreambuf_iterator<char>(data_stream_v)),
-        std::istreambuf_iterator<char>());
-    std::string const test_string_cv(
-        (std::istreambuf_iterator<char>(data_stream_cv)),
-        std::istreambuf_iterator<char>());
-
-    std::remove("test_out.dat");
-    std::remove("test_out_v.dat");
-    std::remove("test_out_cv.dat");
-
-    std::string golden_string;
-    if constexpr (std::is_floating_point<TestType>::value)
+    if (get_rank() == 0)
     {
-      golden_string =
-          "2.000000000000e+00 3.000000000000e+00 4.000000000000e+00 "
-          "5.000000000000e+00 6.000000000000e+00 ";
-    }
-    else
-    {
-      golden_string = "2 3 4 5 6 ";
-    }
+      gold.dump_to_octave("test_out.dat");
+      gold_v.dump_to_octave("test_out_v.dat");
+      gold_cv.dump_to_octave("test_out_cv.dat");
 
-    REQUIRE(test_string == golden_string);
-    REQUIRE(test_string_v == golden_string);
-    REQUIRE(test_string_cv == golden_string);
+      std::ifstream data_stream("test_out.dat");
+      std::ifstream data_stream_v("test_out_v.dat");
+      std::ifstream data_stream_cv("test_out_cv.dat");
+
+      std::string const test_string(
+          (std::istreambuf_iterator<char>(data_stream)),
+          std::istreambuf_iterator<char>());
+      std::string const test_string_v(
+          (std::istreambuf_iterator<char>(data_stream_v)),
+          std::istreambuf_iterator<char>());
+      std::string const test_string_cv(
+          (std::istreambuf_iterator<char>(data_stream_cv)),
+          std::istreambuf_iterator<char>());
+
+      std::remove("test_out.dat");
+      std::remove("test_out_v.dat");
+      std::remove("test_out_cv.dat");
+
+      std::string golden_string;
+      if constexpr (std::is_floating_point<TestType>::value)
+      {
+        golden_string =
+            "2.000000000000e+00 3.000000000000e+00 4.000000000000e+00 "
+            "5.000000000000e+00 6.000000000000e+00 ";
+      }
+      else
+      {
+        golden_string = "2 3 4 5 6 ";
+      }
+
+      REQUIRE(test_string == golden_string);
+      REQUIRE(test_string_v == golden_string);
+      REQUIRE(test_string_cv == golden_string);
+    }
   }
   SECTION("vector resize")
   {
@@ -865,6 +880,11 @@ TEMPLATE_TEST_CASE("fk::vector utilities", "[tensors]", double, float, int)
 
     // REQUIRE(test_reduced_v == gold);
     // REQUIRE(test_enlarged_v == gold_enlarged);
+
+    auto grid = std::make_shared<cblacs_grid>();
+    fk::vector<TestType> test_distributed(8, 2, grid);
+    REQUIRE(test_distributed.size() == 8);
+    REQUIRE(test_distributed.local_size() == 2);
   }
 
   SECTION("vector concatenation")
@@ -2974,66 +2994,71 @@ TEMPLATE_TEST_CASE("fk::matrix utilities", "[tensors]", double, float, int)
 
   SECTION("dump to octave")
   {
-    gold.dump_to_octave("test_out.dat");
-    gold_v.dump_to_octave("test_out_v.dat");
-    gold_cv.dump_to_octave("test_out_cv.dat");
+    if (get_rank() == 0)
+    {
+      gold.dump_to_octave("test_out.dat");
+      gold_v.dump_to_octave("test_out_v.dat");
+      gold_cv.dump_to_octave("test_out_cv.dat");
 
-    fk::matrix<TestType, mem_type::const_view> const gold_v_p(gold, 1, 3, 0, 1);
-    gold_v_p.dump_to_octave("test_out_v_p.dat");
+      fk::matrix<TestType, mem_type::const_view> const gold_v_p(gold, 1, 3, 0,
+                                                                1);
+      gold_v_p.dump_to_octave("test_out_v_p.dat");
 
-    std::ifstream data_stream("test_out.dat");
-    std::ifstream data_stream_v("test_out_v.dat");
-    std::ifstream data_stream_cv("test_out_cv.dat");
-    std::ifstream data_stream_v_p("test_out_v_p.dat");
+      std::ifstream data_stream("test_out.dat");
+      std::ifstream data_stream_v("test_out_v.dat");
+      std::ifstream data_stream_cv("test_out_cv.dat");
+      std::ifstream data_stream_v_p("test_out_v_p.dat");
 
-    std::string test_string((std::istreambuf_iterator<char>(data_stream)),
-                            std::istreambuf_iterator<char>());
-    std::string test_string_v((std::istreambuf_iterator<char>(data_stream_v)),
+      std::string test_string((std::istreambuf_iterator<char>(data_stream)),
                               std::istreambuf_iterator<char>());
+      std::string test_string_v((std::istreambuf_iterator<char>(data_stream_v)),
+                                std::istreambuf_iterator<char>());
 
-    std::string test_string_cv((std::istreambuf_iterator<char>(data_stream_cv)),
-                               std::istreambuf_iterator<char>());
-    std::string test_string_v_p(
-        (std::istreambuf_iterator<char>(data_stream_v_p)),
-        std::istreambuf_iterator<char>());
+      std::string test_string_cv(
+          (std::istreambuf_iterator<char>(data_stream_cv)),
+          std::istreambuf_iterator<char>());
+      std::string test_string_v_p(
+          (std::istreambuf_iterator<char>(data_stream_v_p)),
+          std::istreambuf_iterator<char>());
 
-    std::remove("test_out.dat");
-    std::remove("test_out_v.dat");
-    std::remove("test_out_cv.dat");
-    std::remove("test_out_v_p.dat");
+      std::remove("test_out.dat");
+      std::remove("test_out_v.dat");
+      std::remove("test_out_cv.dat");
+      std::remove("test_out_v_p.dat");
 
-    std::string golden_string, golden_string_p;
+      std::string golden_string, golden_string_p;
 
-    if constexpr (std::is_floating_point<TestType>::value)
-    {
-      golden_string =
-          "1.200000000000e+01 2.200000000000e+01 3.200000000000e+01 \n"
-          "1.300000000000e+01 2.300000000000e+01 3.300000000000e+01 \n"
-          "1.400000000000e+01 2.400000000000e+01 3.400000000000e+01 \n"
-          "1.500000000000e+01 2.500000000000e+01 3.500000000000e+01 \n"
-          "1.600000000000e+01 2.600000000000e+01 3.600000000000e+01 \n";
+      if constexpr (std::is_floating_point<TestType>::value)
+      {
+        golden_string =
+            "1.200000000000e+01 2.200000000000e+01 3.200000000000e+01 \n"
+            "1.300000000000e+01 2.300000000000e+01 3.300000000000e+01 \n"
+            "1.400000000000e+01 2.400000000000e+01 3.400000000000e+01 \n"
+            "1.500000000000e+01 2.500000000000e+01 3.500000000000e+01 \n"
+            "1.600000000000e+01 2.600000000000e+01 3.600000000000e+01 \n";
 
-      golden_string_p = "1.300000000000e+01 2.300000000000e+01 \n"
-                        "1.400000000000e+01 2.400000000000e+01 \n"
-                        "1.500000000000e+01 2.500000000000e+01 \n";
+        golden_string_p = "1.300000000000e+01 2.300000000000e+01 \n"
+                          "1.400000000000e+01 2.400000000000e+01 \n"
+                          "1.500000000000e+01 2.500000000000e+01 \n";
+      }
+      else
+      {
+        golden_string = "12 22 32 \n"
+                        "13 23 33 \n"
+                        "14 24 34 \n"
+                        "15 25 35 \n"
+                        "16 26 36 \n";
+
+        golden_string_p = "13 23 \n"
+                          "14 24 \n"
+                          "15 25 \n";
+      }
+
+      REQUIRE(test_string == golden_string);
+      REQUIRE(test_string_v == golden_string);
+      REQUIRE(test_string_cv == golden_string);
+      REQUIRE(test_string_v_p == golden_string_p);
     }
-    else
-    {
-      golden_string = "12 22 32 \n"
-                      "13 23 33 \n"
-                      "14 24 34 \n"
-                      "15 25 35 \n"
-                      "16 26 36 \n";
-
-      golden_string_p = "13 23 \n"
-                        "14 24 \n"
-                        "15 25 \n";
-    }
-
-    REQUIRE(test_string == golden_string);
-    REQUIRE(test_string_v == golden_string);
-    REQUIRE(test_string_cv == golden_string);
-    REQUIRE(test_string_v_p == golden_string_p);
   }
 
   SECTION("matrix transform")

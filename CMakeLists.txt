@@ -412,6 +412,7 @@ if (ASGARD_BUILD_TESTS)
     parallel_solver
     time_advance
     fast_math
+    tensors
   )
 
 

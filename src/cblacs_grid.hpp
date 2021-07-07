@@ -12,5 +12,5 @@ public:
   ~cblacs_grid();
 
 private:
-  int ictxt_, nprow_{1}, npcol_, myrow_, mycol_;
+  int ictxt_, nprow_{1}, npcol_, myrow_, mycol_, myid_, numproc_;
 };
