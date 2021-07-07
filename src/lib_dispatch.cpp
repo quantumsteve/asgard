@@ -996,10 +996,9 @@ void scalapack_gesv(int *n, int *nrhs, P *A, int *lda, int *ipiv, P *b,
   psolver.scatter_matrix(A, descA, A_distr.data(), descA_distr, *n, *n);
 
   fk::vector<P> B_distr(0, 256, grid);
-  psolver.resize(B_distr, *n);
-  int descB[DESC_VARS::DLEN_]; //, descB_distr[DESC_VARS::DLEN_];
+  B_distr.resize(*n);
+  int descB[DESC_VARS::DLEN_];
   psolver.descinit(descB, 1, *n);
-  // psolver.descinit_distr(descB_distr, 1, *n);
   psolver.scatter_matrix(b, descB, B_distr.data(), B_distr.get_desc(), 1, *n);
 
   int mp{1}, nq{1}, i_one{1};

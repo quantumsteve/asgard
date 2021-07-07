@@ -36,7 +36,7 @@ int cblacs_grid::local_rows(int m, int mb, bool distributed)
   int i_zero{0}, i_one{1};
   if (distributed)
   {
-    return numroc_(&m, &mb, &myid_, &i_zero, &nprow_);
+    return numroc_(&m, &mb, &myrow_, &i_zero, &nprow_);
   }
   else
   {
