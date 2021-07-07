@@ -1043,29 +1043,28 @@ void scalapack_getrs(char *trans, int *n, int *nrhs, P *A, int *lda, int *ipiv,
 
   fk::matrix<P> A_distr;
   psolver.resize(A_distr, *n, *n);
-  int descA[9], descA_distr[9];
+  int descA[DESC_VARS::DLEN_], descA_distr[DESC_VARS::DLEN_];
   psolver.descinit(descA, *n, *n);
   psolver.descinit_distr(descA_distr, *n, *n);
   psolver.scatter_matrix(A, descA, A_distr.data(), descA_distr, *n, *n);
 
-  fk::vector<P> B_distr;
-  psolver.resize(B_distr, *n);
-  int descB[9], descB_distr[9];
+  fk::vector<P> B_distr(0, 256, grid);
+  B_distr.resize(*n);
+  int descB[DESC_VARS::DLEN_];
   psolver.descinit(descB, 1, *n);
-  psolver.descinit_distr(descB_distr, 1, *n);
-  psolver.scatter_matrix(b, descB, B_distr.data(), descB_distr, 1, *n);
+  psolver.scatter_matrix(b, descB, B_distr.data(), B_distr.get_desc(), 1, *n);
 
   int mp{1}, nq{1}, i_one{1};
   char N{'N'};
   if constexpr (std::is_same<P, double>::value)
   {
     pdgetrs_(&N, n, nrhs, A_distr.data(), &mp, &nq, descA_distr, ipiv,
-             B_distr.data(), &i_one, &nq, descB_distr, info);
+             B_distr.data(), &i_one, &nq, B_distr.get_desc(), info);
   }
   else if constexpr (std::is_same<P, float>::value)
   {
     psgetrs_(&N, n, nrhs, A_distr.data(), &mp, &nq, descA_distr, ipiv,
-             B_distr.data(), &i_one, &nq, descB_distr, info);
+             B_distr.data(), &i_one, &nq, B_distr.get_desc(), info);
   }
   else
   { // not instantiated; should never be reached
@@ -1073,7 +1072,7 @@ void scalapack_getrs(char *trans, int *n, int *nrhs, P *A, int *lda, int *ipiv,
     expect(false);
   }
   psolver.gather_matrix(A, descA, A_distr.data(), descA_distr, *n, *n);
-  psolver.gather_matrix(b, descB, B_distr.data(), descB_distr, 1, *n);
+  psolver.gather_matrix(b, descB, B_distr.data(), B_distr.get_desc(), 1, *n);
 }
 #endif
 
