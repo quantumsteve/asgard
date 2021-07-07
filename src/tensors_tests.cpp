@@ -890,6 +890,7 @@ TEMPLATE_TEST_CASE("fk::vector utilities", "[tensors]", int)
     }
     else
     {
+      // 2x2 grid == half row on each process.
       REQUIRE(test_distributed.local_size() == 4);
     }
   }

@@ -758,7 +758,7 @@ static distribution_test_init const distrib_test_info;
 TEMPLATE_TEST_CASE("LU Routines", "[fast_math]", float, double)
 {
   std::shared_ptr<cblacs_grid> grid = std::make_shared<cblacs_grid>();
-	
+
   fk::matrix<TestType> const A_gold{
       {3.383861628748717e+00, 1.113343240310116e-02, 2.920740795411032e+00},
       {3.210305545769361e+00, 3.412141162288144e+00, 3.934494120167269e+00},

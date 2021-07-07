@@ -115,7 +115,8 @@ public:
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   vector();
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
-  explicit vector(int const size, std::shared_ptr<cblacs_grid> grid = std::shared_ptr<cblacs_grid>() );
+  explicit vector(int const size, std::shared_ptr<cblacs_grid> grid =
+                                      std::shared_ptr<cblacs_grid>());
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   explicit vector(int const size, int mb, std::shared_ptr<cblacs_grid> grid);
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
@@ -823,7 +824,8 @@ fk::vector<P, mem, resrc>::vector()
 // but this is probably slower if needing to declare in a perf. critical region
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
-fk::vector<P, mem, resrc>::vector(int const size, std::shared_ptr<cblacs_grid> grid)
+fk::vector<P, mem, resrc>::vector(int const size,
+                                  std::shared_ptr<cblacs_grid> grid)
     : size_{size}, ref_count_{std::make_shared<int>(0)}, grid_{std::move(grid)}
 {
   expect(size >= 0);
@@ -836,12 +838,13 @@ fk::vector<P, mem, resrc>::vector(int const size, std::shared_ptr<cblacs_grid> g
   {
     allocate_device(data_, size_);
   }
-  if(grid_)
+  if (grid_)
   {
     int i_zero{0}, i_one{1}, info;
     int ictxt = grid_->get_context();
     int lld   = std::max(1, grid_->local_rows(1, size_, false));
-    descinit_(desc_.data(), &size_, &i_one, &size_, &i_one, &i_zero, &i_zero, &ictxt, &lld, &info);
+    descinit_(desc_.data(), &size_, &i_one, &size_, &i_one, &i_zero, &i_zero,
+              &ictxt, &lld, &info);
   }
 }
 
@@ -854,14 +857,15 @@ fk::vector<P, mem, resrc>::vector(int const size, int mb,
 {
   expect(size >= 0);
   expect(mb >= 0);
-  if(grid_)
+  if (grid_)
   {
     int i_zero{0}, i_one{1}, info;
     int ictxt = grid_->get_context();
     int lld   = std::max(1, grid_->local_rows(size, mb));
     int myid, numproc;
     Cblacs_pinfo(&myid, &numproc);
-    descinit_(desc_.data(), &size_, &i_one, &mb, &i_one, &i_zero, &i_zero, &ictxt, &lld, &info);
+    descinit_(desc_.data(), &size_, &i_one, &mb, &i_one, &i_zero, &i_zero,
+              &ictxt, &lld, &info);
     local_size_ = grid_->local_rows(size_, mb);
   }
 
