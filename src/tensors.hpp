@@ -166,7 +166,7 @@ public:
   scalapack_matrix_info(int rows, int cols)
       : rows_{rows}, cols_{cols}, local_rows_{rows}, local_cols_{cols},
         mb_{rows}, nb_{cols}, desc_{{1, 0, rows_, cols_, rows_, cols_, 0, 0,
-                                     rows_ * cols_}}
+                                     rows_}}
   {}
   scalapack_matrix_info(int rows, int cols, int mb, int nb,
                         std::shared_ptr<cblacs_grid> grid)
