@@ -16,8 +16,8 @@ extern "C"
 
 cblacs_grid::cblacs_grid()
 {
-  int i_negone{-1}, i_zero{0};
-  Cblacs_pinfo(&myid_, &numproc_);
+  int i_negone{-1}, i_zero{0}, myid;
+  Cblacs_pinfo(&myid, &numproc_);
   for (npcol_ = std::sqrt(numproc_) + 1; npcol_ >= 1; npcol_--)
   {
     nprow_        = numproc_ / npcol_;

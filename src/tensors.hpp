@@ -1558,7 +1558,7 @@ void fk::vector<P, mem, resrc>::dump_to_octave(char const *filename) const
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
 fk::vector<P, mem_type::owner, resrc> &
-fk::vector<P, mem, resrc>::resize(int new_size)
+fk::vector<P, mem, resrc>::resize(int const new_size)
 {
   expect(new_size >= 0);
   if (new_size == this->size())

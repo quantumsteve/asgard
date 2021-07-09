@@ -45,20 +45,6 @@ void parallel_solver<P>::scatter_matrix(P *A, int *descA, P *A_distr,
   P zero{0.0E+0}, one{1.0E+0};
   int i_one{1};
   char N{'N'};
-  if (get_rank() == 0)
-  {
-    for (int i = 0; i < 9; ++i)
-    {
-      std::cout << descA[i] << " ";
-    }
-    std::cout << '\n';
-    for (int i = 0; i < 9; ++i)
-    {
-      std::cout << descA_distr[i] << " ";
-    }
-    std::cout << '\n';
-  }
-
   // Call pdgeadd_ to distribute matrix (i.e. copy A into A_distr)
   if constexpr (std::is_same<P, double>::value)
   {
