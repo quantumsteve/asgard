@@ -104,6 +104,64 @@ template<typename P, mem_type mem = mem_type::owner,
          resource resrc = resource::host>
 class matrix;
 
+#ifdef ASGARD_USE_SCALAPACK
+
+class scalapack_info
+{
+public:
+  scalapack_info(int size)
+      : size_{size}, local_size_{size}, mb_{size}, desc_{{1, 0, size_, 1, size_,
+                                                          1, 0, 0, size_}}
+  {}
+  scalapack_info(int size, int mb, std::shared_ptr<cblacs_grid> grid)
+      : size_{size}, mb_{mb}, grid_{std::move(grid)}
+  {
+    if (grid_)
+    {
+      int i_zero{0}, i_one{1}, info;
+      int ictxt = grid_->get_context();
+      int lld   = std::max(1, grid_->local_rows(size, mb));
+      descinit_(desc_.data(), &size_, &i_one, &mb, &i_one, &i_zero, &i_zero,
+                &ictxt, &lld, &info);
+      local_size_ = grid_->local_rows(size_, mb);
+    }
+    else
+    {
+      throw std::invalid_argument("cblas_grid pointer is null!");
+    }
+  }
+  void resize(int new_size)
+  {
+    size_ = new_size;
+    if (grid_)
+    {
+      int i_zero{0}, i_one{1}, info;
+      int ictxt = grid_->get_context();
+      int lld   = std::max(1, grid_->local_rows(size_, mb_));
+      descinit_(desc_.data(), &size_, &i_one, &mb_, &i_one, &i_zero, &i_zero,
+                &ictxt, &lld, &info);
+      local_size_ = grid_->local_rows(size_, mb_);
+    }
+    else
+    {
+      desc_       = {{1, 0, size_, 1, size_, 1, 0, 0, size_}};
+      local_size_ = new_size;
+    }
+  }
+
+  int *get_desc() { return desc_.data(); }
+  int local_size() const { return local_size_; }
+
+private:
+  int size_;
+  int local_size_;
+  int mb_;
+  std::array<int, 9> desc_;
+  std::shared_ptr<cblacs_grid> grid_;
+};
+
+#endif
+
 template<typename P, mem_type mem, resource resrc>
 class vector
 {
@@ -115,8 +173,7 @@ public:
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   vector();
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
-  explicit vector(int const size, std::shared_ptr<cblacs_grid> grid =
-                                      std::shared_ptr<cblacs_grid>());
+  explicit vector(int const size);
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   explicit vector(int const size, int mb, std::shared_ptr<cblacs_grid> grid);
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
@@ -273,7 +330,7 @@ public:
   // basic queries to private data
   //
   int size() const { return size_; }
-  int local_size() const { return local_size_; }
+  int local_size() const { return info_.local_size(); }
   // just get a pointer. cannot deref/assign. for e.g. blas
   // use subscript operators for general purpose access
   // this can be offsetted for views
@@ -338,7 +395,7 @@ public:
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   int get_num_views() const;
 #ifdef ASGARD_USE_SCALAPACK
-  int *get_desc() { return desc_.data(); }
+  int *get_desc() { return info_.get_desc(); }
 #endif
 private:
   // const/nonconst view constructors delegate to this private constructor
@@ -359,11 +416,7 @@ private:
   P *data_;  //< pointer to elements
   int size_; //< dimension
   std::shared_ptr<int> ref_count_ = nullptr;
-#ifdef ASGARD_USE_SCALAPACK
-  std::shared_ptr<cblacs_grid> grid_;
-  std::array<int, 9> desc_;
-  int mb_, local_size_;
-#endif
+  scalapack_info info_;
 };
 
 template<typename P, mem_type mem, resource resrc>
@@ -818,25 +871,16 @@ copy_matrix_to_host(fk::matrix<P, mem, resource::host> &dest,
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
 fk::vector<P, mem, resrc>::vector()
-    : data_{nullptr}, size_{0}, ref_count_{std::make_shared<int>(0)}
-{
-  desc_[0] = 1;
-  desc_[1] = 0;
-  desc_[2] = size_;
-  desc_[3] = 1;
-  desc_[4] = size_;
-  desc_[5] = 1;
-  desc_[6] = 0;
-  desc_[7] = 0;
-  desc_[8] = size_;
-}
+    : data_{nullptr}, size_{0}, ref_count_{std::make_shared<int>(0)}, info_{
+                                                                          size_}
+{}
+
 // right now, initializing with zero for e.g. passing in answer vectors to blas
 // but this is probably slower if needing to declare in a perf. critical region
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
-fk::vector<P, mem, resrc>::vector(int const size,
-                                  std::shared_ptr<cblacs_grid> grid)
-    : size_{size}, ref_count_{std::make_shared<int>(0)}, grid_{std::move(grid)}
+fk::vector<P, mem, resrc>::vector(int const size)
+    : size_{size}, ref_count_{std::make_shared<int>(0)}, info_{size}
 {
   expect(size >= 0);
 
@@ -848,68 +892,24 @@ fk::vector<P, mem, resrc>::vector(int const size,
   {
     allocate_device(data_, size_);
   }
-  if (grid_)
-  {
-    int i_zero{0}, i_one{1}, info;
-    int ictxt = grid_->get_context();
-    int lld   = std::max(1, grid_->local_rows(1, size_, false));
-    descinit_(desc_.data(), &size_, &i_one, &size_, &i_one, &i_zero, &i_zero,
-              &ictxt, &lld, &info);
-  }
-  else
-  {
-    desc_[0] = 1;
-    desc_[1] = 0;
-    desc_[2] = size_;
-    desc_[3] = 1;
-    desc_[4] = size_;
-    desc_[5] = 1;
-    desc_[6] = 0;
-    desc_[7] = 0;
-    desc_[8] = size_;
-  }
 }
 
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
 fk::vector<P, mem, resrc>::vector(int const size, int mb,
                                   std::shared_ptr<cblacs_grid> grid)
-    : size_{size}, ref_count_{std::make_shared<int>(0)}, grid_{std::move(grid)},
-      mb_{mb}, local_size_{size}
+    : size_{size}, ref_count_{std::make_shared<int>(0)},
+      info_(size, mb, std::move(grid))
 {
   expect(size >= 0);
-  expect(mb >= 0);
-  if (grid_)
-  {
-    int i_zero{0}, i_one{1}, info;
-    int ictxt = grid_->get_context();
-    int lld   = std::max(1, grid_->local_rows(size, mb));
-    int myid, numproc;
-    Cblacs_pinfo(&myid, &numproc);
-    descinit_(desc_.data(), &size_, &i_one, &mb, &i_one, &i_zero, &i_zero,
-              &ictxt, &lld, &info);
-    local_size_ = grid_->local_rows(size_, mb);
-  }
-  else
-  {
-    desc_[0] = 1;
-    desc_[1] = 0;
-    desc_[2] = size_;
-    desc_[3] = 1;
-    desc_[4] = size_;
-    desc_[5] = 1;
-    desc_[6] = 0;
-    desc_[7] = 0;
-    desc_[8] = size_;
-  }
-
+  int local_size = info_.local_size();
   if constexpr (resrc == resource::host)
   {
-    data_ = new P[local_size_]();
+    data_ = new P[local_size]();
   }
   else
   {
-    allocate_device(data_, local_size_);
+    allocate_device(data_, local_size);
   }
 }
 
@@ -919,7 +919,8 @@ fk::vector<P, mem, resrc>::vector(int const size, int mb,
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
 fk::vector<P, mem, resrc>::vector(std::initializer_list<P> list)
-    : size_{static_cast<int>(list.size())}, ref_count_{std::make_shared<int>(0)}
+    : size_{static_cast<int>(list.size())},
+      ref_count_{std::make_shared<int>(0)}, info_{static_cast<int>(list.size())}
 {
   if constexpr (resrc == resource::host)
   {
@@ -931,22 +932,13 @@ fk::vector<P, mem, resrc>::vector(std::initializer_list<P> list)
     allocate_device(data_, size_);
     copy_to_device(data_, list.begin(), size_);
   }
-  desc_[0] = 1;
-  desc_[1] = 0;
-  desc_[2] = size_;
-  desc_[3] = 1;
-  desc_[4] = size_;
-  desc_[5] = 1;
-  desc_[6] = 0;
-  desc_[7] = 0;
-  desc_[8] = size_;
 }
 
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename, resource, typename>
 fk::vector<P, mem, resrc>::vector(std::vector<P> const &v)
     : data_{new P[v.size()]}, size_{static_cast<int>(v.size())},
-      ref_count_{std::make_shared<int>(0)}
+      ref_count_{std::make_shared<int>(0)}, info_{static_cast<int>(v.size())}
 {
   std::copy(v.begin(), v.end(), data_);
 }
@@ -959,7 +951,7 @@ template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
 fk::vector<P, mem, resrc>::vector(
     fk::matrix<P, mem_type::owner, resrc> const &mat)
-    : ref_count_{std::make_shared<int>(0)}
+    : ref_count_{std::make_shared<int>(0)}, info_{size_}
 {
   size_ = mat.size();
   if ((*this).size() == 0)
@@ -1070,7 +1062,7 @@ fk::vector<P, mem, resrc>::~vector()
 //
 template<typename P, mem_type mem, resource resrc>
 fk::vector<P, mem, resrc>::vector(vector<P, mem, resrc> const &a)
-    : size_{a.size_}, desc_{a.desc_}
+    : size_{a.size_}, info_{a.info_}
 {
   if constexpr (mem == mem_type::owner)
   {
@@ -1130,7 +1122,7 @@ operator=(vector<P, mem, resrc> const &a)
 //
 template<typename P, mem_type mem, resource resrc>
 fk::vector<P, mem, resrc>::vector(vector<P, mem, resrc> &&a)
-    : data_{a.data_}, size_{a.size_}
+    : data_{a.data_}, size_{a.size_}, info_{a.info_}
 {
   if constexpr (mem == mem_type::owner)
   {
@@ -1163,6 +1155,7 @@ operator=(vector<P, mem, resrc> &&a)
 
   expect(size() == a.size());
   size_      = a.size_;
+  info_      = std::move(a.info_);
   ref_count_ = std::make_shared<int>(0);
   ref_count_.swap(a.ref_count_);
   P *const temp{data_};
@@ -1177,8 +1170,8 @@ operator=(vector<P, mem, resrc> &&a)
 template<typename P, mem_type mem, resource resrc>
 template<typename PP, mem_type omem, mem_type, typename, resource, typename>
 fk::vector<P, mem, resrc>::vector(vector<PP, omem> const &a)
-    : data_{new P[a.size()]}, size_{a.size()}, ref_count_{
-                                                   std::make_shared<int>(0)}
+    : data_{new P[a.size()]}, size_{a.size()},
+      ref_count_{std::make_shared<int>(0)}, info_{a.info_}
 {
   for (auto i = 0; i < a.size(); ++i)
   {
@@ -1211,7 +1204,7 @@ operator=(vector<PP, omem> const &a)
 template<typename P, mem_type mem, resource resrc>
 template<mem_type omem, mem_type, typename, mem_type, typename>
 fk::vector<P, mem, resrc>::vector(vector<P, omem, resrc> const &a)
-    : size_(a.size()), ref_count_(std::make_shared<int>(0))
+    : size_(a.size()), ref_count_(std::make_shared<int>(0)), info_{a.info_}
 {
   if constexpr (resrc == resource::host)
   {
@@ -1572,41 +1565,30 @@ fk::vector<P, mem, resrc>::resize(int new_size)
     return *this;
   P *old_data{data_};
 
-  if (grid_)
-  {
-    int i_zero{0}, i_one{1}, info;
-    int ictxt = grid_->get_context();
-    int lld   = std::max(1, grid_->local_rows(new_size, mb_));
-    descinit_(desc_.data(), &new_size, &i_one, &mb_, &i_one, &i_zero, &i_zero,
-              &ictxt, &lld, &info);
-    local_size_ = grid_->local_rows(new_size, mb_);
-  }
-  else
-  {
-    local_size_ = new_size;
-  }
-
+  info_.resize(new_size);
+  int local_size = info_.local_size();
   if constexpr (resrc == resource::host)
   {
-    data_ = new P[local_size_]();
-    if (size() > 0 && local_size_ > 0)
+    int local_size = info_.local_size();
+    data_          = new P[local_size]();
+    if (size() > 0 && local_size > 0)
     {
-      if (size() < local_size_)
+      if (size() < local_size)
         std::memcpy(data_, old_data, size() * sizeof(P));
       else
-        std::memcpy(data_, old_data, local_size_ * sizeof(P));
+        std::memcpy(data_, old_data, local_size * sizeof(P));
     }
     delete[] old_data;
   }
   else
   {
-    allocate_device(data_, local_size_);
-    if (size() > 0 && local_size_ > 0)
+    allocate_device(data_, local_size);
+    if (size() > 0 && local_size > 0)
     {
-      if (size() < local_size_)
+      if (size() < local_size)
         copy_on_device(data_, old_data, size());
       else
-        copy_on_device(data_, old_data, local_size_);
+        copy_on_device(data_, old_data, local_size);
     }
     delete_device(old_data);
   }
@@ -1677,7 +1659,7 @@ template<mem_type, typename, mem_type omem>
 fk::vector<P, mem, resrc>::vector(fk::vector<P, omem, resrc> const &vec,
                                   int const start_index, int const stop_index,
                                   bool const delegated)
-    : ref_count_{vec.ref_count_}
+    : ref_count_{vec.ref_count_}, info_{0}
 {
   // ignore dummy argument to avoid compiler warnings
   ignore(delegated);
@@ -1691,6 +1673,7 @@ fk::vector<P, mem, resrc>::vector(fk::vector<P, omem, resrc> const &vec,
 
     data_ = vec.data_ + start_index;
     size_ = stop_index - start_index + 1;
+    info_ = scalapack_info(size_);
   }
 }
 
@@ -1702,7 +1685,7 @@ fk::vector<P, mem, resrc>::vector(fk::matrix<P, omem, resrc> const &source,
                                   std::shared_ptr<int> source_ref_count,
                                   int const column_index, int const row_start,
                                   int const row_stop)
-    : ref_count_(source_ref_count)
+    : ref_count_(source_ref_count), info_{0}
 {
   expect(column_index >= 0);
   expect(column_index < source.ncols());
@@ -1712,6 +1695,7 @@ fk::vector<P, mem, resrc>::vector(fk::matrix<P, omem, resrc> const &source,
 
   data_ = nullptr;
   size_ = row_stop - row_start + 1;
+  info_ = scalapack_info{size_};
 
   if (size_ > 0)
   {
