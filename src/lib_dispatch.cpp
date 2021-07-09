@@ -971,7 +971,7 @@ void getrs(char *trans, int *n, int *nrhs, P *A, int *lda, int *ipiv, P *b,
 
 template<typename P>
 void scalapack_gesv(int *n, int *nrhs, P *A, int *lda, int *ipiv, P *b,
-                    int *ldb, int *info)
+                    int *descB, int *ldb, int *info)
 {
   expect(n);
   expect(nrhs);
@@ -980,6 +980,7 @@ void scalapack_gesv(int *n, int *nrhs, P *A, int *lda, int *ipiv, P *b,
   expect(ipiv);
   expect(info);
   expect(b);
+  expect(descB);
   expect(ldb);
   expect(*ldb >= 1);
   expect(*lda >= 1);
@@ -997,8 +998,6 @@ void scalapack_gesv(int *n, int *nrhs, P *A, int *lda, int *ipiv, P *b,
 
   fk::vector<P> B_distr(0, 256, grid);
   B_distr.resize(*n);
-  int descB[DESC_VARS::DLEN_];
-  psolver.descinit(descB, 1, *n);
   psolver.scatter_matrix(b, descB, B_distr.data(), B_distr.get_desc(), 1, *n);
 
   int mp{1}, nq{1}, i_one{1};
@@ -1173,9 +1172,9 @@ template void getrs(char *trans, int *n, int *nrhs, float *A, int *lda,
                     int *ipiv, float *b, int *ldb, int *info);
 #ifdef ASGARD_USE_SCALAPACK
 template void scalapack_gesv(int *n, int *nrhs, double *A, int *lda, int *ipiv,
-                             double *b, int *ldb, int *info);
+                             double *b, int *descB, int *ldb, int *info);
 template void scalapack_gesv(int *n, int *nrhs, float *A, int *lda, int *ipiv,
-                             float *b, int *ldb, int *info);
+                             float *b, int *descB, int *ldb, int *info);
 
 template void scalapack_getrs(char *trans, int *n, int *nrhs, double *A,
                               int *lda, int *ipiv, double *b, int *ldb,

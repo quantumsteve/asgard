@@ -819,7 +819,17 @@ template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
 fk::vector<P, mem, resrc>::vector()
     : data_{nullptr}, size_{0}, ref_count_{std::make_shared<int>(0)}
-{}
+{
+  desc_[0] = 1;
+  desc_[1] = 0;
+  desc_[2] = size_;
+  desc_[3] = 1;
+  desc_[4] = size_;
+  desc_[5] = 1;
+  desc_[6] = 0;
+  desc_[7] = 0;
+  desc_[8] = size_;
+}
 // right now, initializing with zero for e.g. passing in answer vectors to blas
 // but this is probably slower if needing to declare in a perf. critical region
 template<typename P, mem_type mem, resource resrc>
@@ -846,6 +856,18 @@ fk::vector<P, mem, resrc>::vector(int const size,
     descinit_(desc_.data(), &size_, &i_one, &size_, &i_one, &i_zero, &i_zero,
               &ictxt, &lld, &info);
   }
+  else
+  {
+    desc_[0] = 1;
+    desc_[1] = 0;
+    desc_[2] = size_;
+    desc_[3] = 1;
+    desc_[4] = size_;
+    desc_[5] = 1;
+    desc_[6] = 0;
+    desc_[7] = 0;
+    desc_[8] = size_;
+  }
 }
 
 template<typename P, mem_type mem, resource resrc>
@@ -867,6 +889,18 @@ fk::vector<P, mem, resrc>::vector(int const size, int mb,
     descinit_(desc_.data(), &size_, &i_one, &mb, &i_one, &i_zero, &i_zero,
               &ictxt, &lld, &info);
     local_size_ = grid_->local_rows(size_, mb);
+  }
+  else
+  {
+    desc_[0] = 1;
+    desc_[1] = 0;
+    desc_[2] = size_;
+    desc_[3] = 1;
+    desc_[4] = size_;
+    desc_[5] = 1;
+    desc_[6] = 0;
+    desc_[7] = 0;
+    desc_[8] = size_;
   }
 
   if constexpr (resrc == resource::host)
@@ -897,6 +931,15 @@ fk::vector<P, mem, resrc>::vector(std::initializer_list<P> list)
     allocate_device(data_, size_);
     copy_to_device(data_, list.begin(), size_);
   }
+  desc_[0] = 1;
+  desc_[1] = 0;
+  desc_[2] = size_;
+  desc_[3] = 1;
+  desc_[4] = size_;
+  desc_[5] = 1;
+  desc_[6] = 0;
+  desc_[7] = 0;
+  desc_[8] = size_;
 }
 
 template<typename P, mem_type mem, resource resrc>
@@ -1027,7 +1070,7 @@ fk::vector<P, mem, resrc>::~vector()
 //
 template<typename P, mem_type mem, resource resrc>
 fk::vector<P, mem, resrc>::vector(vector<P, mem, resrc> const &a)
-    : size_{a.size_}
+    : size_{a.size_}, desc_{a.desc_}
 {
   if constexpr (mem == mem_type::owner)
   {
