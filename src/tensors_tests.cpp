@@ -50,13 +50,6 @@ TEMPLATE_TEST_CASE("fk::vector interface: constructors, copy/move", "[tensors]",
     fk::vector<TestType> const zeros{0, 0, 0, 0, 0};
     REQUIRE(test == zeros);
     // REQUIRE(test_v == zeros);
-
-    /*auto grid = std::make_shared<cblacs_grid>();
-    fk::vector<TestType> const test_w_grid(5, grid);
-    REQUIRE(test_w_grid == test);
-
-    fk::vector<TestType> const test_w_grid_mb(5, 256, grid);
-    REQUIRE(test_w_grid_mb == test);*/
   }
   SECTION("constructor from list initialization")
   {
@@ -755,7 +748,7 @@ TEMPLATE_TEST_CASE("fk::vector operators", "[tensors]", double, float, int)
   }
 } // end fk::vector operators
 
-TEMPLATE_TEST_CASE("fk::vector utilities", "[tensors]", int)
+TEMPLATE_TEST_CASE("fk::vector utilities", "[tensors]", double, float, int)
 {
   fk::vector<TestType> const gold{2, 3, 4, 5, 6};
   fk::vector<TestType> gold_copy(gold);

@@ -175,6 +175,6 @@ void scalapack_gesv(int *n, int *nrhs, P *A, int *lda, int *ipiv, P *b,
 
 template<typename P>
 void scalapack_getrs(char *trans, int *n, int *nrhs, P *A, int *lda, int *ipiv,
-                     P *b, int *ldb, int *info);
+                     P *b, int *descB, int *ldb, int *info);
 #endif
 } // namespace lib_dispatch

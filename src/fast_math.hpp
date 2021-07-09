@@ -268,7 +268,8 @@ void getrs(fk::matrix<P, amem> const &A, fk::vector<P, bmem> &B,
   else if (opt == solve_opts::scalapack)
   {
     lib_dispatch::scalapack_getrs(&trans, &rows_A, &cols_B, A.data(), &lda,
-                                  ipiv.data(), B.data(), &ldb, &info);
+                                  ipiv.data(), B.data(), B.get_desc(), &ldb,
+                                  &info);
 #endif
   }
   else

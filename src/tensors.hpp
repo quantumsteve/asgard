@@ -106,14 +106,14 @@ class matrix;
 
 #ifdef ASGARD_USE_SCALAPACK
 
-class scalapack_info
+class scalapack_vector_info
 {
 public:
-  scalapack_info(int size)
+  scalapack_vector_info(int size)
       : size_{size}, local_size_{size}, mb_{size}, desc_{{1, 0, size_, 1, size_,
                                                           1, 0, 0, size_}}
   {}
-  scalapack_info(int size, int mb, std::shared_ptr<cblacs_grid> grid)
+  scalapack_vector_info(int size, int mb, std::shared_ptr<cblacs_grid> grid)
       : size_{size}, mb_{mb}, grid_{std::move(grid)}
   {
     if (grid_)
@@ -156,6 +156,67 @@ private:
   int size_;
   int local_size_;
   int mb_;
+  std::array<int, 9> desc_;
+  std::shared_ptr<cblacs_grid> grid_;
+};
+
+class scalapack_matrix_info
+{
+public:
+  scalapack_matrix_info(int rows, int cols)
+      : rows_{rows}, cols_{cols}, local_rows_{rows}, local_cols_{cols},
+        mb_{rows}, nb_{cols}, desc_{{1, 0, rows_, cols_, rows_, cols_, 0, 0,
+                                     rows_ * cols_}}
+  {}
+  scalapack_matrix_info(int rows, int cols, int mb, int nb,
+                        std::shared_ptr<cblacs_grid> grid)
+      : rows_{rows}, cols_{cols}, mb_{mb}, nb_{nb}, grid_{std::move(grid)}
+  {
+    if (grid_)
+    {
+      int i_zero{0}, info;
+      int ictxt = grid_->get_context();
+      int lld   = std::max(1, grid_->local_rows(rows_, mb_));
+      descinit_(desc_.data(), &rows_, &cols_, &mb_, &nb_, &i_zero, &i_zero,
+                &ictxt, &lld, &info);
+      local_rows_ = grid_->local_rows(rows_, mb_);
+      local_cols_ = grid_->local_cols(cols_, nb_);
+    }
+    else
+    {
+      throw std::invalid_argument("cblas_grid pointer is null!");
+    }
+  }
+  void resize(int rows, int cols)
+  {
+    rows_ = rows;
+    cols_ = cols;
+    if (grid_)
+    {
+      int i_zero{0}, info;
+      int ictxt = grid_->get_context();
+      int lld   = std::max(1, grid_->local_rows(rows_, mb_));
+      descinit_(desc_.data(), &rows_, &cols_, &mb_, &nb_, &i_zero, &i_zero,
+                &ictxt, &lld, &info);
+      local_rows_ = grid_->local_rows(rows_, mb_);
+      local_cols_ = grid_->local_cols(cols_, nb_);
+    }
+    else
+    {
+      desc_       = {{1, 0, rows_, cols_, rows_, cols_, 0, 0, rows_ * cols_}};
+      local_rows_ = rows_;
+      local_cols_ = cols_;
+    }
+  }
+
+  int *get_desc() { return desc_.data(); }
+  int local_rows() const { return local_rows_; }
+  int local_cols() const { return local_cols_; }
+
+private:
+  int rows_, cols_;
+  int local_rows_, local_cols_;
+  int mb_, nb_;
   std::array<int, 9> desc_;
   std::shared_ptr<cblacs_grid> grid_;
 };
@@ -416,7 +477,7 @@ private:
   P *data_;  //< pointer to elements
   int size_; //< dimension
   std::shared_ptr<int> ref_count_ = nullptr;
-  scalapack_info info_;
+  scalapack_vector_info info_;
 };
 
 template<typename P, mem_type mem, resource resrc>
@@ -435,6 +496,8 @@ public:
   matrix();
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   matrix(int rows, int cols);
+  template<mem_type m_ = mem, typename = enable_for_owner<m_>>
+  matrix(int rows, int cols, int mb, int nb, std::shared_ptr<cblacs_grid> grid);
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   matrix(std::initializer_list<std::initializer_list<P>> list);
 
@@ -586,6 +649,9 @@ public:
   //
   int nrows() const { return nrows_; }
   int ncols() const { return ncols_; }
+  int local_rows() const { return info_.local_rows(); }
+  int local_cols() const { return info_.local_cols(); }
+  int *get_desc() { return info_.get_desc(); }
   // for owners: stride == nrows
   // for views:  stride == owner's nrows
   int stride() const { return stride_; }
@@ -700,7 +766,8 @@ private:
   int stride_; //< leading dimension;
                // number of elements in memory between successive matrix
                // elements in a row
-  std::shared_ptr<int> ref_count_ = nullptr;
+  std::shared_ptr<int> ref_count_;
+  scalapack_matrix_info info_;
 };
 
 //-----------------------------------------------------------------------------
@@ -1673,7 +1740,7 @@ fk::vector<P, mem, resrc>::vector(fk::vector<P, omem, resrc> const &vec,
 
     data_ = vec.data_ + start_index;
     size_ = stop_index - start_index + 1;
-    info_ = scalapack_info(size_);
+    info_ = scalapack_vector_info(size_);
   }
 }
 
@@ -1695,7 +1762,7 @@ fk::vector<P, mem, resrc>::vector(fk::matrix<P, omem, resrc> const &source,
 
   data_ = nullptr;
   size_ = row_stop - row_start + 1;
-  info_ = scalapack_info{size_};
+  info_ = scalapack_vector_info{size_};
 
   if (size_ > 0)
   {
@@ -1713,7 +1780,7 @@ template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
 fk::matrix<P, mem, resrc>::matrix()
     : data_{nullptr}, nrows_{0}, ncols_{0}, stride_{nrows_},
-      ref_count_{std::make_shared<int>(0)}
+      ref_count_{std::make_shared<int>(0)}, info_(nrows_, ncols_)
 
 {}
 
@@ -1722,8 +1789,9 @@ fk::matrix<P, mem, resrc>::matrix()
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
 fk::matrix<P, mem, resrc>::matrix(int const m, int const n)
-    : nrows_{m}, ncols_{n}, stride_{nrows_}, ref_count_{
-                                                 std::make_shared<int>(0)}
+    : nrows_{m}, ncols_{n}, stride_{nrows_}, ref_count_{std::make_shared<int>(
+                                                 0)},
+      info_(nrows_, ncols_)
 
 {
   expect(m >= 0);
@@ -1739,13 +1807,40 @@ fk::matrix<P, mem, resrc>::matrix(int const m, int const n)
   }
 }
 
+// right now, initializing with zero for e.g. passing in answer vectors to blas
+// but this is probably slower if needing to declare in a perf. critical region
+template<typename P, mem_type mem, resource resrc>
+template<mem_type, typename>
+fk::matrix<P, mem, resrc>::matrix(int const rows, int const cols, int const mb,
+                                  int const nb,
+                                  std::shared_ptr<cblacs_grid> grid)
+    : nrows_{rows}, ncols_{cols}, stride_{nrows_},
+      ref_count_{std::make_shared<int>(0)},
+      info_(nrows_, ncols_, mb, nb, std::move(grid))
+{
+  expect(rows >= 0);
+  expect(cols >= 0);
+  expect(mb >= 0);
+  expect(nb >= 0);
+
+  if constexpr (resrc == resource::host)
+  {
+    data_ = new P[local_rows() * local_cols()]();
+  }
+  else
+  {
+    allocate_device(data_, local_rows() * local_cols());
+  }
+}
+
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
 fk::matrix<P, mem, resrc>::matrix(
     std::initializer_list<std::initializer_list<P>> llist)
     : nrows_{static_cast<int>(llist.size())}, ncols_{static_cast<int>(
                                                   llist.begin()->size())},
-      stride_{nrows_}, ref_count_{std::make_shared<int>(0)}
+      stride_{nrows_}, ref_count_{std::make_shared<int>(0)},
+      info_(nrows_, ncols_)
 {
   if constexpr (resrc == resource::host)
   {
@@ -1850,7 +1945,7 @@ fk::matrix<P, mem, resrc>::~matrix()
 //
 template<typename P, mem_type mem, resource resrc>
 fk::matrix<P, mem, resrc>::matrix(matrix<P, mem, resrc> const &a)
-    : nrows_{a.nrows()}, ncols_{a.ncols()}, stride_{a.stride()}
+    : nrows_{a.nrows()}, ncols_{a.ncols()}, stride_{a.stride()}, info_(a.info_)
 
 {
   if constexpr (mem == mem_type::owner)
@@ -1918,7 +2013,7 @@ template<typename P, mem_type mem, resource resrc>
 template<mem_type omem, mem_type, typename, mem_type, typename>
 fk::matrix<P, mem, resrc>::matrix(matrix<P, omem, resrc> const &a)
     : nrows_{a.nrows()}, ncols_{a.ncols()}, stride_{a.nrows()},
-      ref_count_{std::make_shared<int>(0)}
+      ref_count_{std::make_shared<int>(0)}, info_(a.info_)
 {
   if constexpr (resrc == resource::host)
   {
@@ -1958,7 +2053,7 @@ template<typename P, mem_type mem, resource resrc>
 template<typename PP, mem_type omem, mem_type, typename, resource, typename>
 fk::matrix<P, mem, resrc>::matrix(matrix<PP, omem> const &a)
     : data_{new P[a.size()]()}, nrows_{a.nrows()}, ncols_{a.ncols()},
-      stride_{a.nrows()}, ref_count_{std::make_shared<int>(0)}
+      stride_{a.nrows()}, ref_count_{std::make_shared<int>(0)}, info_(a.info_)
 
 {
   for (auto j = 0; j < a.ncols(); ++j)
@@ -2048,7 +2143,8 @@ fk::matrix<P, mem, resrc> &fk::matrix<P, mem, resrc>::transfer_from(
 //
 template<typename P, mem_type mem, resource resrc>
 fk::matrix<P, mem, resrc>::matrix(matrix<P, mem, resrc> &&a)
-    : data_{a.data()}, nrows_{a.nrows()}, ncols_{a.ncols()}, stride_{a.stride()}
+    : data_{a.data()}, nrows_{a.nrows()}, ncols_{a.ncols()},
+      stride_{a.stride()}, info_{std::move(a.info_)}
 {
   if constexpr (mem == mem_type::owner)
   {
@@ -2332,7 +2428,7 @@ fk::matrix<P, mem, resrc> &fk::matrix<P, mem, resrc>::transpose()
   std::vector<bool> visited(size() - 2, false);
 
   /* Given index "pos" in a linear array interpreted as a matrix of "nrows_"
-     rows, n_cols_ columns, and column-major data layout, return the linear
+     rows, ncols_ columns, and column-major data layout, return the linear
      index position of the element in the matrix's transpose */
   auto const remap_index = [this](int const pos) -> int {
     int const row         = pos % nrows_;
@@ -2562,16 +2658,16 @@ fk::matrix<P, mem, resrc>::clear_and_resize(int const rows, int const cols)
   expect(cols >= 0);
   if (rows == 0 || cols == 0)
     expect(cols == rows);
-
+  info_.resize(rows, cols);
   if constexpr (resrc == resource::host)
   {
     delete[] data_;
-    data_ = new P[rows * cols]();
+    data_ = new P[local_rows() * local_cols()]();
   }
   else
   {
     delete_device(data_);
-    allocate_device(data_, rows * cols);
+    allocate_device(data_, local_rows() * local_cols());
   }
 
   nrows_  = rows;
@@ -2716,7 +2812,7 @@ fk::matrix<P, mem, resrc>::matrix(fk::matrix<P, omem, resrc> const &owner,
                                   int const start_row, int const stop_row,
                                   int const start_col, int const stop_col,
                                   bool const delegated)
-    : ref_count_(owner.ref_count_)
+    : ref_count_(owner.ref_count_), info_{0, 0}
 {
   ignore(delegated);
   data_   = nullptr;
@@ -2738,6 +2834,7 @@ fk::matrix<P, mem, resrc>::matrix(fk::matrix<P, omem, resrc> const &owner,
     nrows_  = view_rows;
     ncols_  = view_cols;
     stride_ = owner.stride();
+    info_   = scalapack_matrix_info(nrows_, ncols_);
   }
 }
 
@@ -2749,7 +2846,7 @@ fk::matrix<P, mem, resrc>::matrix(fk::vector<P, omem, resrc> const &source,
                                   std::shared_ptr<int> source_ref_count,
                                   int const num_rows, int const num_cols,
                                   int const start_index)
-    : ref_count_(source_ref_count)
+    : ref_count_(source_ref_count), info_(0, 0)
 {
   expect(start_index >= 0);
   expect(num_rows > 0);
@@ -2769,6 +2866,7 @@ fk::matrix<P, mem, resrc>::matrix(fk::vector<P, omem, resrc> const &source,
     nrows_  = num_rows;
     ncols_  = num_cols;
     stride_ = num_rows;
+    info_   = scalapack_matrix_info(nrows_, ncols_);
   }
 }
 

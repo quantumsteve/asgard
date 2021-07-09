@@ -989,26 +989,23 @@ void scalapack_gesv(int *n, int *nrhs, P *A, int *lda, int *ipiv, P *b,
   auto grid = std::make_shared<cblacs_grid>();
   parallel_solver<P> psolver(grid);
 
-  fk::matrix<P> A_distr;
-  psolver.resize(A_distr, *n, *n);
-  int descA[DESC_VARS::DLEN_], descA_distr[DESC_VARS::DLEN_];
+  fk::matrix<P> A_distr(*n, *n, 256, 256, grid);
+  int descA[DESC_VARS::DLEN_];
   psolver.descinit(descA, *n, *n);
-  psolver.descinit_distr(descA_distr, *n, *n);
-  psolver.scatter_matrix(A, descA, A_distr.data(), descA_distr, *n, *n);
+  psolver.scatter_matrix(A, descA, A_distr.data(), A_distr.get_desc(), *n, *n);
 
-  fk::vector<P> B_distr(0, 256, grid);
-  B_distr.resize(*n);
+  fk::vector<P> B_distr(*n, 256, grid);
   psolver.scatter_matrix(b, descB, B_distr.data(), B_distr.get_desc(), 1, *n);
 
   int mp{1}, nq{1}, i_one{1};
   if constexpr (std::is_same<P, double>::value)
   {
-    pdgesv_(n, nrhs, A_distr.data(), &mp, &nq, descA_distr, ipiv,
+    pdgesv_(n, nrhs, A_distr.data(), &mp, &nq, A_distr.get_desc(), ipiv,
             B_distr.data(), &i_one, &nq, B_distr.get_desc(), info);
   }
   else if constexpr (std::is_same<P, float>::value)
   {
-    psgesv_(n, nrhs, A_distr.data(), &mp, &nq, descA_distr, ipiv,
+    psgesv_(n, nrhs, A_distr.data(), &mp, &nq, A_distr.get_desc(), ipiv,
             B_distr.data(), &i_one, &nq, B_distr.get_desc(), info);
   }
   else
@@ -1016,13 +1013,13 @@ void scalapack_gesv(int *n, int *nrhs, P *A, int *lda, int *ipiv, P *b,
     std::cerr << "gesv not implemented for non-floating types" << '\n';
     expect(false);
   }
-  psolver.gather_matrix(A, descA, A_distr.data(), descA_distr, *n, *n);
+  psolver.gather_matrix(A, descA, A_distr.data(), A_distr.get_desc(), *n, *n);
   psolver.gather_matrix(b, descB, B_distr.data(), B_distr.get_desc(), 1, *n);
 }
 
 template<typename P>
 void scalapack_getrs(char *trans, int *n, int *nrhs, P *A, int *lda, int *ipiv,
-                     P *b, int *ldb, int *info)
+                     P *b, int *descB, int *ldb, int *info)
 {
   expect(trans);
   expect(n);
@@ -1040,29 +1037,24 @@ void scalapack_getrs(char *trans, int *n, int *nrhs, P *A, int *lda, int *ipiv,
   auto grid = std::make_shared<cblacs_grid>();
   parallel_solver<P> psolver(grid);
 
-  fk::matrix<P> A_distr;
-  psolver.resize(A_distr, *n, *n);
-  int descA[DESC_VARS::DLEN_], descA_distr[DESC_VARS::DLEN_];
+  fk::matrix<P> A_distr(*n, *n, 256, 256, grid);
+  int descA[DESC_VARS::DLEN_];
   psolver.descinit(descA, *n, *n);
-  psolver.descinit_distr(descA_distr, *n, *n);
-  psolver.scatter_matrix(A, descA, A_distr.data(), descA_distr, *n, *n);
+  psolver.scatter_matrix(A, descA, A_distr.data(), A_distr.get_desc(), *n, *n);
 
-  fk::vector<P> B_distr(0, 256, grid);
-  B_distr.resize(*n);
-  int descB[DESC_VARS::DLEN_];
-  psolver.descinit(descB, 1, *n);
+  fk::vector<P> B_distr(*n, 256, grid);
   psolver.scatter_matrix(b, descB, B_distr.data(), B_distr.get_desc(), 1, *n);
 
   int mp{1}, nq{1}, i_one{1};
   char N{'N'};
   if constexpr (std::is_same<P, double>::value)
   {
-    pdgetrs_(&N, n, nrhs, A_distr.data(), &mp, &nq, descA_distr, ipiv,
+    pdgetrs_(&N, n, nrhs, A_distr.data(), &mp, &nq, A_distr.get_desc(), ipiv,
              B_distr.data(), &i_one, &nq, B_distr.get_desc(), info);
   }
   else if constexpr (std::is_same<P, float>::value)
   {
-    psgetrs_(&N, n, nrhs, A_distr.data(), &mp, &nq, descA_distr, ipiv,
+    psgetrs_(&N, n, nrhs, A_distr.data(), &mp, &nq, A_distr.get_desc(), ipiv,
              B_distr.data(), &i_one, &nq, B_distr.get_desc(), info);
   }
   else
@@ -1070,7 +1062,7 @@ void scalapack_getrs(char *trans, int *n, int *nrhs, P *A, int *lda, int *ipiv,
     std::cerr << "getrs not implemented for non-floating types" << '\n';
     expect(false);
   }
-  psolver.gather_matrix(A, descA, A_distr.data(), descA_distr, *n, *n);
+  psolver.gather_matrix(A, descA, A_distr.data(), A_distr.get_desc(), *n, *n);
   psolver.gather_matrix(b, descB, B_distr.data(), B_distr.get_desc(), 1, *n);
 }
 #endif
@@ -1178,9 +1170,9 @@ template void scalapack_gesv(int *n, int *nrhs, float *A, int *lda, int *ipiv,
 
 template void scalapack_getrs(char *trans, int *n, int *nrhs, double *A,
                               int *lda, int *ipiv, double *b, int *ldb,
-                              int *info);
+                              int *descB, int *info);
 template void scalapack_getrs(char *trans, int *n, int *nrhs, float *A,
-                              int *lda, int *ipiv, float *b, int *ldb,
-                              int *info);
+                              int *lda, int *ipiv, float *b, int *descB,
+                              int *ldb, int *info);
 #endif
 } // namespace lib_dispatch
