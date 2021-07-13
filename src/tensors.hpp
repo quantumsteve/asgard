@@ -150,6 +150,7 @@ public:
   }
 
   int *get_desc() { return desc_.data(); }
+  const int *get_desc() const { return desc_.data(); }
   int local_size() const { return local_size_; }
 
 private:
@@ -210,6 +211,7 @@ public:
   }
 
   int *get_desc() { return desc_.data(); }
+  const int *get_desc() const { return desc_.data(); }
   int local_rows() const { return local_rows_; }
   int local_cols() const { return local_cols_; }
 
@@ -457,6 +459,7 @@ public:
   int get_num_views() const;
 #ifdef ASGARD_USE_SCALAPACK
   int *get_desc() { return info_.get_desc(); }
+  const int *get_desc() const { return info_.get_desc(); }
 #endif
 private:
   // const/nonconst view constructors delegate to this private constructor
@@ -652,6 +655,7 @@ public:
   int local_rows() const { return info_.local_rows(); }
   int local_cols() const { return info_.local_cols(); }
   int *get_desc() { return info_.get_desc(); }
+  const int *get_desc() const { return info_.get_desc(); }
   // for owners: stride == nrows
   // for views:  stride == owner's nrows
   int stride() const { return stride_; }

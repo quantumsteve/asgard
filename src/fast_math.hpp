@@ -213,8 +213,9 @@ void gesv(fk::matrix<P, amem> const &A, fk::vector<P, bmem> &B,
   }
   else if (opt == solve_opts::scalapack)
   {
-    lib_dispatch::scalapack_gesv(&rows_A, &cols_B, A.data(), &lda, ipiv.data(),
-                                 B.data(), B.get_desc(), &ldb, &info);
+    lib_dispatch::scalapack_gesv(&rows_A, &cols_B, A.data(), A.get_desc(), &lda,
+                                 ipiv.data(), B.data(), B.get_desc(), &ldb,
+                                 &info);
 #endif
   }
   else
@@ -267,9 +268,9 @@ void getrs(fk::matrix<P, amem> const &A, fk::vector<P, bmem> &B,
   }
   else if (opt == solve_opts::scalapack)
   {
-    lib_dispatch::scalapack_getrs(&trans, &rows_A, &cols_B, A.data(), &lda,
-                                  ipiv.data(), B.data(), B.get_desc(), &ldb,
-                                  &info);
+    lib_dispatch::scalapack_getrs(&trans, &rows_A, &cols_B, A.data(),
+                                  A.get_desc(), &lda, ipiv.data(), B.data(),
+                                  B.get_desc(), &ldb, &info);
 #endif
   }
   else
