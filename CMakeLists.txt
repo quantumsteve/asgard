@@ -217,7 +217,7 @@ if (ASGARD_IO_HIGHFIVE)
 endif ()
 
 if (ASGARD_USE_SCALAPACK)
-  list (APPEND components cblacs_grid parallel_solver)
+  list (APPEND components cblacs_grid parallel_solver scalapack_matrix_info)
 endif ()
 
 if (ASGARD_USE_MATLAB)
@@ -245,6 +245,7 @@ if (build_kron)
 endif ()
 
 if (ASGARD_USE_SCALAPACK)
+  target_link_libraries (tensors PRIVATE scalapack_matrix_info)
   target_link_libraries (lib_dispatch PRIVATE cblacs_grid parallel_solver)
 endif ()
 
@@ -296,7 +297,7 @@ if (ASGARD_USE_SCALAPACK)
   # Uncomment and remove following line after issue #23 is fixed
   # https://bitbucket.org/icl/slate/issues/23
   # target_link_libraries (lib_dispatch PRIVATE slate_scalapack_api scalapack MPI::MPI_CXX)
-  target_link_libraries (lib_dispatch PRIVATE scalapack  MPI::MPI_CXX)
+  target_link_libraries (lib_dispatch PRIVATE scalapack MPI::MPI_CXX)
   target_compile_definitions (lib_dispatch PUBLIC ASGARD_USE_SCALAPACK)
 else ()
   target_link_libraries (lib_dispatch PRIVATE ${LINALG_LIBS})
@@ -412,6 +413,7 @@ if (ASGARD_BUILD_TESTS)
     parallel_solver
     time_advance
     fast_math
+    scalapack_matrix_info
     tensors
   )
 

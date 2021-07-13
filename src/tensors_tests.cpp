@@ -7,6 +7,7 @@
 #include <numeric>
 #include <sstream>
 
+#include "cblacs_grid.hpp"
 #include "matlab_utilities.hpp"
 
 // note using widening conversions to floating point type in order to use same

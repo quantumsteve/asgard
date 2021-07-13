@@ -14,13 +14,8 @@
 #include <string>
 #include <vector>
 #ifdef ASGARD_USE_SCALAPACK
-#include "cblacs_grid.hpp"
-extern "C"
-{
-  void descinit_(int *desc, int *m, int *n, int *mb, int *nb, int *irsrc,
-                 int *icsrc, int *ictxt, int *lld, int *info);
-  void Cblacs_pinfo(int *, int *);
-}
+#include "scalapack_matrix_info.hpp"
+#include "scalapack_vector_info.hpp"
 #endif
 
 /* tolerance for answer comparisons */
@@ -103,127 +98,6 @@ class vector;
 template<typename P, mem_type mem = mem_type::owner,
          resource resrc = resource::host>
 class matrix;
-
-#ifdef ASGARD_USE_SCALAPACK
-
-class scalapack_vector_info
-{
-public:
-  scalapack_vector_info(int size)
-      : size_{size}, local_size_{size}, mb_{size}, desc_{{1, 0, size_, 1, size_,
-                                                          1, 0, 0, size_}}
-  {}
-  scalapack_vector_info(int size, int mb, std::shared_ptr<cblacs_grid> grid)
-      : size_{size}, mb_{mb}, grid_{std::move(grid)}
-  {
-    if (grid_)
-    {
-      int i_zero{0}, i_one{1}, info;
-      int ictxt = grid_->get_context();
-      int lld   = std::max(1, grid_->local_rows(size, mb));
-      descinit_(desc_.data(), &size_, &i_one, &mb, &i_one, &i_zero, &i_zero,
-                &ictxt, &lld, &info);
-      local_size_ = grid_->local_rows(size_, mb);
-    }
-    else
-    {
-      throw std::invalid_argument("cblas_grid pointer is null!");
-    }
-  }
-  void resize(int new_size)
-  {
-    size_ = new_size;
-    if (grid_)
-    {
-      int i_zero{0}, i_one{1}, info;
-      int ictxt = grid_->get_context();
-      int lld   = std::max(1, grid_->local_rows(size_, mb_));
-      descinit_(desc_.data(), &size_, &i_one, &mb_, &i_one, &i_zero, &i_zero,
-                &ictxt, &lld, &info);
-      local_size_ = grid_->local_rows(size_, mb_);
-    }
-    else
-    {
-      desc_       = {{1, 0, size_, 1, size_, 1, 0, 0, size_}};
-      local_size_ = new_size;
-    }
-  }
-
-  int *get_desc() { return desc_.data(); }
-  const int *get_desc() const { return desc_.data(); }
-  int local_size() const { return local_size_; }
-
-private:
-  int size_;
-  int local_size_;
-  int mb_;
-  std::array<int, 9> desc_;
-  std::shared_ptr<cblacs_grid> grid_;
-};
-
-class scalapack_matrix_info
-{
-public:
-  scalapack_matrix_info(int rows, int cols)
-      : rows_{rows}, cols_{cols}, local_rows_{rows}, local_cols_{cols},
-        mb_{rows}, nb_{cols}, desc_{{1, 0, rows_, cols_, rows_, cols_, 0, 0,
-                                     rows_}}
-  {}
-  scalapack_matrix_info(int rows, int cols, int mb, int nb,
-                        std::shared_ptr<cblacs_grid> grid)
-      : rows_{rows}, cols_{cols}, mb_{mb}, nb_{nb}, grid_{std::move(grid)}
-  {
-    if (grid_)
-    {
-      int i_zero{0}, info;
-      int ictxt = grid_->get_context();
-      int lld   = std::max(1, grid_->local_rows(rows_, mb_));
-      descinit_(desc_.data(), &rows_, &cols_, &mb_, &nb_, &i_zero, &i_zero,
-                &ictxt, &lld, &info);
-      local_rows_ = grid_->local_rows(rows_, mb_);
-      local_cols_ = grid_->local_cols(cols_, nb_);
-    }
-    else
-    {
-      throw std::invalid_argument("cblas_grid pointer is null!");
-    }
-  }
-  void resize(int rows, int cols)
-  {
-    rows_ = rows;
-    cols_ = cols;
-    if (grid_)
-    {
-      int i_zero{0}, info;
-      int ictxt = grid_->get_context();
-      int lld   = std::max(1, grid_->local_rows(rows_, mb_));
-      descinit_(desc_.data(), &rows_, &cols_, &mb_, &nb_, &i_zero, &i_zero,
-                &ictxt, &lld, &info);
-      local_rows_ = grid_->local_rows(rows_, mb_);
-      local_cols_ = grid_->local_cols(cols_, nb_);
-    }
-    else
-    {
-      desc_       = {{1, 0, rows_, cols_, rows_, cols_, 0, 0, rows_ * cols_}};
-      local_rows_ = rows_;
-      local_cols_ = cols_;
-    }
-  }
-
-  int *get_desc() { return desc_.data(); }
-  const int *get_desc() const { return desc_.data(); }
-  int local_rows() const { return local_rows_; }
-  int local_cols() const { return local_cols_; }
-
-private:
-  int rows_, cols_;
-  int local_rows_, local_cols_;
-  int mb_, nb_;
-  std::array<int, 9> desc_;
-  std::shared_ptr<cblacs_grid> grid_;
-};
-
-#endif
 
 template<typename P, mem_type mem, resource resrc>
 class vector
@@ -480,7 +354,7 @@ private:
   P *data_;  //< pointer to elements
   int size_; //< dimension
   std::shared_ptr<int> ref_count_ = nullptr;
-  scalapack_vector_info info_;
+  fk::scalapack_vector_info info_;
 };
 
 template<typename P, mem_type mem, resource resrc>
@@ -771,7 +645,7 @@ private:
                // number of elements in memory between successive matrix
                // elements in a row
   std::shared_ptr<int> ref_count_;
-  scalapack_matrix_info info_;
+  fk::scalapack_matrix_info info_;
 };
 
 //-----------------------------------------------------------------------------
