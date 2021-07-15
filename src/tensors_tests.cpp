@@ -876,16 +876,47 @@ TEMPLATE_TEST_CASE("fk::vector utilities", "[tensors]", double, float, int)
     // REQUIRE(test_enlarged_v == gold_enlarged);
 
     auto grid = std::make_shared<cblacs_grid>();
-    fk::vector<TestType> test_distributed(8, 2, grid);
-    REQUIRE(test_distributed.size() == 8);
+    int size{8};
+    int mb{2};
+    fk::vector<TestType> test_distributed(size, mb, grid);
+    REQUIRE(test_distributed.size() == size);
     if (get_num_ranks() == 1)
     {
-      REQUIRE(test_distributed.local_size() == 8);
+      REQUIRE(test_distributed.local_size() == size);
     }
     else
     {
       // 2x2 grid == half row on each process.
-      REQUIRE(test_distributed.local_size() == 4);
+      REQUIRE(test_distributed.local_size() == size/mb);
+    }
+
+    int *desc = test_distributed.get_desc();
+    std::array<int, 9> ref_desc;
+    if (get_num_ranks() == 1) {
+      ref_desc = {{1, 0, size, 1, mb, 1, 0, 0, size}};
+    } else {
+      ref_desc = {{1, 0, size, 1, mb, 1, 0, 0, size/mb}};
+    }
+    for (int i = 0; i < 9; ++i)
+    {
+      REQUIRE(desc[i] == ref_desc[i]);
+    }
+
+    size = 4;
+    test_distributed.resize(size);
+    if (get_num_ranks() == 1) {
+      REQUIRE(test_distributed.local_size() == size);
+    } else {
+      REQUIRE(test_distributed.local_size() == size/mb);
+    }
+    if (get_num_ranks() == 1) {
+      ref_desc = {{1, 0, size, 1, mb, 1, 0, 0, size}};
+    } else {
+      ref_desc = {{1, 0, size, 1, mb, 1, 0, 0, size/mb}};
+    }
+    for (int i = 0; i < 9; ++i)
+    {
+      REQUIRE(desc[i] == ref_desc[i]);
     }
   }
 
