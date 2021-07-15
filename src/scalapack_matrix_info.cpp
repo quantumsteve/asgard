@@ -50,7 +50,7 @@ void scalapack_matrix_info::resize(int rows, int cols)
   }
   else
   {
-    desc_       = {{1, 0, rows_, cols_, rows_, cols_, 0, 0, rows_ * cols_}};
+    desc_       = {{1, 0, rows_, cols_, rows_, cols_, 0, 0, rows_}};
     local_rows_ = rows_;
     local_cols_ = cols_;
   }

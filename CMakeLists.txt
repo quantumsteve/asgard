@@ -217,7 +217,7 @@ if (ASGARD_IO_HIGHFIVE)
 endif ()
 
 if (ASGARD_USE_SCALAPACK)
-  list (APPEND components cblacs_grid parallel_solver scalapack_matrix_info)
+  list (APPEND components cblacs_grid parallel_solver scalapack_matrix_info scalapack_vector_info)
 endif ()
 
 if (ASGARD_USE_MATLAB)
@@ -414,6 +414,7 @@ if (ASGARD_BUILD_TESTS)
     time_advance
     fast_math
     scalapack_matrix_info
+    scalapack_vector_info
     tensors
   )
 
