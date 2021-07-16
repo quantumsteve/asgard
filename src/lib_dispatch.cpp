@@ -20,6 +20,7 @@
 #endif
 
 #ifdef ASGARD_USE_SCALAPACK
+#include "cblacs_grid.hpp"
 #include "parallel_solver.hpp"
 
 extern "C" void psgesv_(int *n, int *nrhs, float *a, int *ia, int *ja,
@@ -990,7 +991,7 @@ void scalapack_gesv(int *n, int *nrhs, P *A, const int *descA, int *lda,
   expect(*n >= 0);
 
   auto grid = std::make_shared<cblacs_grid>();
-  parallel_solver<P> psolver(grid);
+  parallel_solver<P> psolver;
 
   fk::matrix<P> A_distr(*n, *n, 256, 256, grid);
   psolver.scatter_matrix(A, const_cast<int *>(descA), A_distr.data(),
@@ -1038,7 +1039,7 @@ void scalapack_getrs(char *trans, int *n, int *nrhs, P *A, const int *descA,
   expect(*n >= 0);
 
   auto grid = std::make_shared<cblacs_grid>();
-  parallel_solver<P> psolver(grid);
+  parallel_solver<P> psolver;
 
   fk::matrix<P> A_distr(*n, *n, 256, 256, grid);
   psolver.scatter_matrix(A, const_cast<int *>(descA), A_distr.data(),

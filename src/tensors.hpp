@@ -537,6 +537,7 @@ public:
 #ifdef ASGARD_USE_SCALAPACK
   int local_rows() const { return info_.local_rows(); }
   int local_cols() const { return info_.local_cols(); }
+  int local_size() const { return local_rows() * local_cols(); }
   int *get_desc() { return info_.get_desc(); }
   const int *get_desc() const { return info_.get_desc(); }
 #endif
@@ -1799,6 +1800,7 @@ fk::matrix<P, mem, resrc>::matrix(int const rows, int const cols, int const mb,
   expect(cols >= 0);
   expect(mb >= 0);
   expect(nb >= 0);
+  stride_ = local_cols();
 
   if constexpr (resrc == resource::host)
   {

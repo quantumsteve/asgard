@@ -1,3 +1,4 @@
+#include "cblacs_grid.hpp"
 #include "distribution.hpp"
 #include "parallel_solver.hpp"
 #include "tests_general.hpp"
@@ -23,29 +24,35 @@ TEMPLATE_TEST_CASE("", "[parallel_solver]", float, double)
   if (myrank != 0)
     A.clear_and_resize(0, 0);
 
-  fk::vector<TestType> const B{0., 0., 2., 2.};
+  fk::vector<TestType> B{0., 0., 2., 2.};
+  if (myrank != 0)
+    B.resize(0);
 
   auto grid = std::make_shared<cblacs_grid>();
-  parallel_solver<TestType> solver(grid, 2, 2);
+  parallel_solver<TestType> solver;
 
   int n = 4;
   int m = 4;
   REQUIRE(n == m);
-  fk::matrix<TestType> A_distr;
-  solver.resize(A_distr, n, m);
+  fk::matrix<TestType> A_distr(4, 4, 2, 2, grid);
   if (num_ranks == 1)
   {
-    REQUIRE(A_distr.size() == A.size());
+    REQUIRE(A_distr.local_size() == A.size());
   }
   else
   {
-    REQUIRE(A_distr.size() == 4);
+    REQUIRE(A_distr.local_size() == 4);
   }
 
-  int descA[9], descA_distr[9];
-  solver.descinit(descA, n, n);
-  solver.descinit_distr(descA_distr, n, n);
-  solver.scatter_matrix(A.data(), descA, A_distr.data(), descA_distr, n, n);
+  int descA[9];
+  if (myrank == 0)
+  {
+    std::copy_n(A.get_desc(), 9, descA);
+  }
+  MPI_Bcast(descA, 9, MPI_INT, 0, MPI_COMM_WORLD);
+
+  solver.scatter_matrix(A.data(), descA, A_distr.data(), A_distr.get_desc(), n,
+                        n);
 
   if (num_ranks == 1)
   {
@@ -71,21 +78,25 @@ TEMPLATE_TEST_CASE("", "[parallel_solver]", float, double)
   }
 
   n = B.size();
-  fk::vector<TestType> B_distr;
-  solver.resize(B_distr, n);
+  fk::vector<TestType> B_distr(4, 2, grid);
   if (num_ranks == 1)
   {
-    REQUIRE(B_distr.size() == B.size());
+    REQUIRE(B_distr.local_size() == B.size());
   }
   else
   {
-    REQUIRE(B_distr.size() == 2);
+    REQUIRE(B_distr.local_size() == 2);
   }
 
-  int descB[9], descB_distr[9];
-  solver.descinit(descB, 1, n);
-  solver.descinit_distr(descB_distr, 1, n);
-  solver.scatter_matrix(B.data(), descB, B_distr.data(), descB_distr, 1, n);
+  int descB[9];
+  if (myrank == 0)
+  {
+    std::copy_n(B.get_desc(), 9, descB);
+  }
+
+  MPI_Bcast(descB, 9, MPI_INT, 0, MPI_COMM_WORLD);
+  solver.scatter_matrix(B.data(), descB, B_distr.data(), B_distr.get_desc(), 1,
+                        n);
 
   if (num_ranks == 1)
   {
