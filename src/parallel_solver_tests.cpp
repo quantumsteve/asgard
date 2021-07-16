@@ -77,7 +77,6 @@ TEMPLATE_TEST_CASE("", "[parallel_solver]", float, double)
     }
   }
 
-  n = B.size();
   fk::vector<TestType> B_distr(4, 2, grid);
   if (num_ranks == 1)
   {

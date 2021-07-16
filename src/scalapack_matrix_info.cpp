@@ -1,5 +1,6 @@
 #include "scalapack_matrix_info.hpp"
 #include "cblacs_grid.hpp"
+#include "distribution.hpp"
 
 extern "C"
 {
@@ -11,7 +12,8 @@ namespace fk
 {
 scalapack_matrix_info::scalapack_matrix_info(int rows, int cols)
     : rows_{rows}, cols_{cols}, local_rows_{rows}, local_cols_{cols}, mb_{rows},
-      nb_{cols}, desc_{{1, 0, rows_, cols_, rows_, cols_, 0, 0, rows_}}
+      nb_{cols}, desc_{{1, 0, rows_, cols_, rows_, cols_, get_rank(),
+                        get_rank(), rows_}}
 {}
 
 scalapack_matrix_info::scalapack_matrix_info(int rows, int cols, int mb, int nb,
@@ -50,7 +52,7 @@ void scalapack_matrix_info::resize(int rows, int cols)
   }
   else
   {
-    desc_       = {{1, 0, rows_, cols_, rows_, cols_, 0, 0, rows_}};
+    desc_ = {{1, 0, rows_, cols_, rows_, cols_, get_rank(), get_rank(), rows_}};
     local_rows_ = rows_;
     local_cols_ = cols_;
   }
