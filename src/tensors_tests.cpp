@@ -7,7 +7,9 @@
 #include <numeric>
 #include <sstream>
 
+#ifdef ASGARD_USE_SCALAPACK
 #include "cblacs_grid.hpp"
+#endif
 #include "matlab_utilities.hpp"
 
 // note using widening conversions to floating point type in order to use same
@@ -874,7 +876,7 @@ TEMPLATE_TEST_CASE("fk::vector utilities", "[tensors]", double, float, int)
 
     // REQUIRE(test_reduced_v == gold);
     // REQUIRE(test_enlarged_v == gold_enlarged);
-
+#ifdef ASGARD_USE_SCALAPACK
     auto grid = std::make_shared<cblacs_grid>();
     int size{8};
     int mb{2};
@@ -887,15 +889,18 @@ TEMPLATE_TEST_CASE("fk::vector utilities", "[tensors]", double, float, int)
     else
     {
       // 2x2 grid == half row on each process.
-      REQUIRE(test_distributed.local_size() == size/mb);
+      REQUIRE(test_distributed.local_size() == size / mb);
     }
 
     int *desc = test_distributed.get_desc();
     std::array<int, 9> ref_desc;
-    if (get_num_ranks() == 1) {
+    if (get_num_ranks() == 1)
+    {
       ref_desc = {{1, 0, size, 1, mb, 1, 0, 0, size}};
-    } else {
-      ref_desc = {{1, 0, size, 1, mb, 1, 0, 0, size/mb}};
+    }
+    else
+    {
+      ref_desc = {{1, 0, size, 1, mb, 1, 0, 0, size / mb}};
     }
     for (int i = 0; i < 9; ++i)
     {
@@ -904,20 +909,27 @@ TEMPLATE_TEST_CASE("fk::vector utilities", "[tensors]", double, float, int)
 
     size = 4;
     test_distributed.resize(size);
-    if (get_num_ranks() == 1) {
+    if (get_num_ranks() == 1)
+    {
       REQUIRE(test_distributed.local_size() == size);
-    } else {
-      REQUIRE(test_distributed.local_size() == size/mb);
     }
-    if (get_num_ranks() == 1) {
+    else
+    {
+      REQUIRE(test_distributed.local_size() == size / mb);
+    }
+    if (get_num_ranks() == 1)
+    {
       ref_desc = {{1, 0, size, 1, mb, 1, 0, 0, size}};
-    } else {
-      ref_desc = {{1, 0, size, 1, mb, 1, 0, 0, size/mb}};
+    }
+    else
+    {
+      ref_desc = {{1, 0, size, 1, mb, 1, 0, 0, size / mb}};
     }
     for (int i = 0; i < 9; ++i)
     {
       REQUIRE(desc[i] == ref_desc[i]);
     }
+#endif
   }
 
   SECTION("vector concatenation")

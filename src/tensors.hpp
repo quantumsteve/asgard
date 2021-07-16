@@ -111,8 +111,10 @@ public:
   vector();
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   explicit vector(int const size);
+#ifdef ASGARD_USE_SCALAPACK
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   explicit vector(int const size, int mb, std::shared_ptr<cblacs_grid> grid);
+#endif
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   vector(std::initializer_list<P> list);
   template<mem_type m_ = mem, typename = enable_for_owner<m_>,
@@ -267,7 +269,9 @@ public:
   // basic queries to private data
   //
   int size() const { return size_; }
+#ifdef ASGARD_USE_SCALAPACK
   int local_size() const { return info_.local_size(); }
+#endif
   // just get a pointer. cannot deref/assign. for e.g. blas
   // use subscript operators for general purpose access
   // this can be offsetted for views
@@ -354,7 +358,9 @@ private:
   P *data_;  //< pointer to elements
   int size_; //< dimension
   std::shared_ptr<int> ref_count_ = nullptr;
+#ifdef ASGARD_USE_SCALAPACK
   fk::scalapack_vector_info info_;
+#endif
 };
 
 template<typename P, mem_type mem, resource resrc>
@@ -373,8 +379,10 @@ public:
   matrix();
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   matrix(int rows, int cols);
+#ifdef ASGARD_USE_SCALAPACK
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   matrix(int rows, int cols, int mb, int nb, std::shared_ptr<cblacs_grid> grid);
+#endif
   template<mem_type m_ = mem, typename = enable_for_owner<m_>>
   matrix(std::initializer_list<std::initializer_list<P>> list);
 
@@ -526,10 +534,12 @@ public:
   //
   int nrows() const { return nrows_; }
   int ncols() const { return ncols_; }
+#ifdef ASGARD_USE_SCALAPACK
   int local_rows() const { return info_.local_rows(); }
   int local_cols() const { return info_.local_cols(); }
   int *get_desc() { return info_.get_desc(); }
   const int *get_desc() const { return info_.get_desc(); }
+#endif
   // for owners: stride == nrows
   // for views:  stride == owner's nrows
   int stride() const { return stride_; }
@@ -645,7 +655,9 @@ private:
                // number of elements in memory between successive matrix
                // elements in a row
   std::shared_ptr<int> ref_count_;
+#ifdef ASGARD_USE_SCALAPACK
   fk::scalapack_matrix_info info_;
+#endif
 };
 
 //-----------------------------------------------------------------------------
@@ -815,17 +827,26 @@ copy_matrix_to_host(fk::matrix<P, mem, resource::host> &dest,
 //-----------------------------------------------------------------------------
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
-fk::vector<P, mem, resrc>::vector()
-    : data_{nullptr}, size_{0}, ref_count_{std::make_shared<int>(0)}, info_{
-                                                                          size_}
+fk::vector<P, mem, resrc>::vector() : data_{nullptr}, size_{0}, ref_count_
+{
+  std::make_shared<int>(0)
+}
+#ifdef ASGARD_USE_SCALAPACK
+, info_ { size_ }
+#endif
 {}
 
 // right now, initializing with zero for e.g. passing in answer vectors to blas
 // but this is probably slower if needing to declare in a perf. critical region
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
-fk::vector<P, mem, resrc>::vector(int const size)
-    : size_{size}, ref_count_{std::make_shared<int>(0)}, info_{size}
+fk::vector<P, mem, resrc>::vector(int const size) : size_{size}, ref_count_
+{
+  std::make_shared<int>(0)
+}
+#ifdef ASGARD_USE_SCALAPACK
+, info_ { size }
+#endif
 {
   expect(size >= 0);
 
@@ -839,6 +860,7 @@ fk::vector<P, mem, resrc>::vector(int const size)
   }
 }
 
+#ifdef ASGARD_USE_SCALAPACK
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
 fk::vector<P, mem, resrc>::vector(int const size, int mb,
@@ -857,6 +879,7 @@ fk::vector<P, mem, resrc>::vector(int const size, int mb,
     allocate_device(data_, local_size);
   }
 }
+#endif
 
 // can also do this with variadic template constructor for constness
 // https://stackoverflow.com/a/5549918
@@ -864,8 +887,13 @@ fk::vector<P, mem, resrc>::vector(int const size, int mb,
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
 fk::vector<P, mem, resrc>::vector(std::initializer_list<P> list)
-    : size_{static_cast<int>(list.size())},
-      ref_count_{std::make_shared<int>(0)}, info_{static_cast<int>(list.size())}
+    : size_{static_cast<int>(list.size())}, ref_count_
+{
+  std::make_shared<int>(0)
+}
+#ifdef ASGARD_USE_SCALAPACK
+, info_ { static_cast<int>(list.size()) }
+#endif
 {
   if constexpr (resrc == resource::host)
   {
@@ -882,8 +910,13 @@ fk::vector<P, mem, resrc>::vector(std::initializer_list<P> list)
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename, resource, typename>
 fk::vector<P, mem, resrc>::vector(std::vector<P> const &v)
-    : data_{new P[v.size()]}, size_{static_cast<int>(v.size())},
-      ref_count_{std::make_shared<int>(0)}, info_{static_cast<int>(v.size())}
+    : data_{new P[v.size()]}, size_{static_cast<int>(v.size())}, ref_count_
+{
+  std::make_shared<int>(0)
+}
+#ifdef ASGARD_USE_SCALAPACK
+, info_ { static_cast<int>(v.size()) }
+#endif
 {
   std::copy(v.begin(), v.end(), data_);
 }
@@ -896,7 +929,13 @@ template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
 fk::vector<P, mem, resrc>::vector(
     fk::matrix<P, mem_type::owner, resrc> const &mat)
-    : ref_count_{std::make_shared<int>(0)}, info_{size_}
+    : ref_count_
+{
+  std::make_shared<int>(0)
+}
+#ifdef ASGARD_USE_SCALAPACK
+, info_ { size_ }
+#endif
 {
   size_ = mat.size();
   if ((*this).size() == 0)
@@ -1006,8 +1045,13 @@ fk::vector<P, mem, resrc>::~vector()
 // vector copy constructor for like types (like types only)
 //
 template<typename P, mem_type mem, resource resrc>
-fk::vector<P, mem, resrc>::vector(vector<P, mem, resrc> const &a)
-    : size_{a.size_}, info_{a.info_}
+fk::vector<P, mem, resrc>::vector(vector<P, mem, resrc> const &a) : size_
+{
+  a.size_
+}
+#ifdef ASGARD_USE_SCALAPACK
+, info_ { a.info_ }
+#endif
 {
   if constexpr (mem == mem_type::owner)
   {
@@ -1067,7 +1111,13 @@ operator=(vector<P, mem, resrc> const &a)
 //
 template<typename P, mem_type mem, resource resrc>
 fk::vector<P, mem, resrc>::vector(vector<P, mem, resrc> &&a)
-    : data_{a.data_}, size_{a.size_}, info_{a.info_}
+    : data_{a.data_}, size_
+{
+  a.size_
+}
+#ifdef ASGARD_USE_SCALAPACK
+, info_ { a.info_ }
+#endif
 {
   if constexpr (mem == mem_type::owner)
   {
@@ -1099,8 +1149,10 @@ operator=(vector<P, mem, resrc> &&a)
   }
 
   expect(size() == a.size());
-  size_      = a.size_;
-  info_      = std::move(a.info_);
+  size_ = a.size_;
+#ifdef ASGARD_USE_SCALAPACK
+  info_ = std::move(a.info_);
+#endif
   ref_count_ = std::make_shared<int>(0);
   ref_count_.swap(a.ref_count_);
   P *const temp{data_};
@@ -1115,8 +1167,13 @@ operator=(vector<P, mem, resrc> &&a)
 template<typename P, mem_type mem, resource resrc>
 template<typename PP, mem_type omem, mem_type, typename, resource, typename>
 fk::vector<P, mem, resrc>::vector(vector<PP, omem> const &a)
-    : data_{new P[a.size()]}, size_{a.size()},
-      ref_count_{std::make_shared<int>(0)}, info_{a.info_}
+    : data_{new P[a.size()]}, size_{a.size()}, ref_count_
+{
+  std::make_shared<int>(0)
+}
+#ifdef ASGARD_USE_SCALAPACK
+, info_ { a.info_ }
+#endif
 {
   for (auto i = 0; i < a.size(); ++i)
   {
@@ -1149,7 +1206,14 @@ operator=(vector<PP, omem> const &a)
 template<typename P, mem_type mem, resource resrc>
 template<mem_type omem, mem_type, typename, mem_type, typename>
 fk::vector<P, mem, resrc>::vector(vector<P, omem, resrc> const &a)
-    : size_(a.size()), ref_count_(std::make_shared<int>(0)), info_{a.info_}
+    : size_(a.size()), ref_count_(std::make_shared<int>(0))
+#ifdef ASGARD_USE_SCALAPACK
+      ,
+      info_
+{
+  a.info_
+}
+#endif
 {
   if constexpr (resrc == resource::host)
   {
@@ -1509,13 +1573,15 @@ fk::vector<P, mem, resrc>::resize(int const new_size)
   if (new_size == this->size())
     return *this;
   P *old_data{data_};
-
+#ifdef ASGARD_USE_SCALAPACK
   info_.resize(new_size);
   int local_size = info_.local_size();
+#else
+  int local_size = new_size;
+#endif
   if constexpr (resrc == resource::host)
   {
-    int local_size = info_.local_size();
-    data_          = new P[local_size]();
+    data_ = new P[local_size]();
     if (size() > 0 && local_size > 0)
     {
       if (size() < local_size)
@@ -1604,7 +1670,13 @@ template<mem_type, typename, mem_type omem>
 fk::vector<P, mem, resrc>::vector(fk::vector<P, omem, resrc> const &vec,
                                   int const start_index, int const stop_index,
                                   bool const delegated)
-    : ref_count_{vec.ref_count_}, info_{0}
+    : ref_count_
+{
+  vec.ref_count_
+}
+#ifdef ASGARD_USE_SCALAPACK
+, info_ { 0 }
+#endif
 {
   // ignore dummy argument to avoid compiler warnings
   ignore(delegated);
@@ -1618,7 +1690,9 @@ fk::vector<P, mem, resrc>::vector(fk::vector<P, omem, resrc> const &vec,
 
     data_ = vec.data_ + start_index;
     size_ = stop_index - start_index + 1;
+#ifdef ASGARD_USE_SCALAPACK
     info_ = scalapack_vector_info(size_);
+#endif
   }
 }
 
@@ -1630,7 +1704,14 @@ fk::vector<P, mem, resrc>::vector(fk::matrix<P, omem, resrc> const &source,
                                   std::shared_ptr<int> source_ref_count,
                                   int const column_index, int const row_start,
                                   int const row_stop)
-    : ref_count_(source_ref_count), info_{0}
+    : ref_count_(source_ref_count)
+#ifdef ASGARD_USE_SCALAPACK
+      ,
+      info_
+{
+  0
+}
+#endif
 {
   expect(column_index >= 0);
   expect(column_index < source.ncols());
@@ -1640,7 +1721,9 @@ fk::vector<P, mem, resrc>::vector(fk::matrix<P, omem, resrc> const &source,
 
   data_ = nullptr;
   size_ = row_stop - row_start + 1;
+#ifdef ASGARD_USE_SCALAPACK
   info_ = scalapack_vector_info{size_};
+#endif
 
   if (size_ > 0)
   {
@@ -1657,8 +1740,13 @@ fk::vector<P, mem, resrc>::vector(fk::matrix<P, omem, resrc> const &source,
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
 fk::matrix<P, mem, resrc>::matrix()
-    : data_{nullptr}, nrows_{0}, ncols_{0}, stride_{nrows_},
-      ref_count_{std::make_shared<int>(0)}, info_(nrows_, ncols_)
+    : data_{nullptr}, nrows_{0}, ncols_{0}, stride_{nrows_}, ref_count_
+{
+  std::make_shared<int>(0)
+}
+#ifdef ASGARD_USE_SCALAPACK
+, info_(nrows_, ncols_)
+#endif
 
 {}
 
@@ -1667,24 +1755,35 @@ fk::matrix<P, mem, resrc>::matrix()
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
 fk::matrix<P, mem, resrc>::matrix(int const m, int const n)
-    : nrows_{m}, ncols_{n}, stride_{nrows_}, ref_count_{std::make_shared<int>(
-                                                 0)},
-      info_(nrows_, ncols_)
+    : nrows_{m}, ncols_{n}, stride_{nrows_}, ref_count_
+{
+  std::make_shared<int>(0)
+}
+#ifdef ASGARD_USE_SCALAPACK
+, info_(nrows_, ncols_)
+#endif
 
 {
   expect(m >= 0);
   expect(n >= 0);
-
+#ifdef ASGARD_USE_SCALAPACK
+  int local_rows = info_.local_rows();
+  int local_cols = info_.local_cols();
+#else
+  int local_rows = nrows();
+  int local_cols = ncols();
+#endif
   if constexpr (resrc == resource::host)
   {
-    data_ = new P[nrows() * ncols()]();
+    data_ = new P[local_rows * local_cols]();
   }
   else
   {
-    allocate_device(data_, nrows() * ncols());
+    allocate_device(data_, local_rows * local_cols);
   }
 }
 
+#ifdef ASGARD_USE_SCALAPACK
 // right now, initializing with zero for e.g. passing in answer vectors to blas
 // but this is probably slower if needing to declare in a perf. critical region
 template<typename P, mem_type mem, resource resrc>
@@ -1710,6 +1809,7 @@ fk::matrix<P, mem, resrc>::matrix(int const rows, int const cols, int const mb,
     allocate_device(data_, local_rows() * local_cols());
   }
 }
+#endif
 
 template<typename P, mem_type mem, resource resrc>
 template<mem_type, typename>
@@ -1717,8 +1817,13 @@ fk::matrix<P, mem, resrc>::matrix(
     std::initializer_list<std::initializer_list<P>> llist)
     : nrows_{static_cast<int>(llist.size())}, ncols_{static_cast<int>(
                                                   llist.begin()->size())},
-      stride_{nrows_}, ref_count_{std::make_shared<int>(0)},
-      info_(nrows_, ncols_)
+      stride_{nrows_}, ref_count_
+{
+  std::make_shared<int>(0)
+}
+#ifdef ASGARD_USE_SCALAPACK
+, info_(nrows_, ncols_)
+#endif
 {
   if constexpr (resrc == resource::host)
   {
@@ -1823,8 +1928,13 @@ fk::matrix<P, mem, resrc>::~matrix()
 //
 template<typename P, mem_type mem, resource resrc>
 fk::matrix<P, mem, resrc>::matrix(matrix<P, mem, resrc> const &a)
-    : nrows_{a.nrows()}, ncols_{a.ncols()}, stride_{a.stride()}, info_(a.info_)
-
+    : nrows_{a.nrows()}, ncols_{a.ncols()}, stride_
+{
+  a.stride()
+}
+#ifdef ASGARD_USE_SCALAPACK
+, info_(a.info_)
+#endif
 {
   if constexpr (mem == mem_type::owner)
   {
@@ -1890,8 +2000,13 @@ operator=(matrix<P, mem, resrc> const &a)
 template<typename P, mem_type mem, resource resrc>
 template<mem_type omem, mem_type, typename, mem_type, typename>
 fk::matrix<P, mem, resrc>::matrix(matrix<P, omem, resrc> const &a)
-    : nrows_{a.nrows()}, ncols_{a.ncols()}, stride_{a.nrows()},
-      ref_count_{std::make_shared<int>(0)}, info_(a.info_)
+    : nrows_{a.nrows()}, ncols_{a.ncols()}, stride_{a.nrows()}, ref_count_
+{
+  std::make_shared<int>(0)
+}
+#ifdef ASGARD_USE_SCALAPACK
+, info_(a.info_)
+#endif
 {
   if constexpr (resrc == resource::host)
   {
@@ -1931,8 +2046,13 @@ template<typename P, mem_type mem, resource resrc>
 template<typename PP, mem_type omem, mem_type, typename, resource, typename>
 fk::matrix<P, mem, resrc>::matrix(matrix<PP, omem> const &a)
     : data_{new P[a.size()]()}, nrows_{a.nrows()}, ncols_{a.ncols()},
-      stride_{a.nrows()}, ref_count_{std::make_shared<int>(0)}, info_(a.info_)
-
+      stride_{a.nrows()}, ref_count_
+{
+  std::make_shared<int>(0)
+}
+#ifdef ASGARD_USE_SCALAPACK
+, info_(a.info_)
+#endif
 {
   for (auto j = 0; j < a.ncols(); ++j)
     for (auto i = 0; i < a.nrows(); ++i)
@@ -2021,8 +2141,13 @@ fk::matrix<P, mem, resrc> &fk::matrix<P, mem, resrc>::transfer_from(
 //
 template<typename P, mem_type mem, resource resrc>
 fk::matrix<P, mem, resrc>::matrix(matrix<P, mem, resrc> &&a)
-    : data_{a.data()}, nrows_{a.nrows()}, ncols_{a.ncols()},
-      stride_{a.stride()}, info_{std::move(a.info_)}
+    : data_{a.data()}, nrows_{a.nrows()}, ncols_{a.ncols()}, stride_
+{
+  a.stride()
+}
+#ifdef ASGARD_USE_SCALAPACK
+, info_ { std::move(a.info_) }
+#endif
 {
   if constexpr (mem == mem_type::owner)
   {
@@ -2536,16 +2661,24 @@ fk::matrix<P, mem, resrc>::clear_and_resize(int const rows, int const cols)
   expect(cols >= 0);
   if (rows == 0 || cols == 0)
     expect(cols == rows);
+#ifdef ASGARD_USE_SCALAPACK
   info_.resize(rows, cols);
+  int local_rows = info_.local_rows();
+  int local_cols = info_.local_cols();
+#else
+  int local_rows = rows;
+  int local_cols = cols;
+#endif
+
   if constexpr (resrc == resource::host)
   {
     delete[] data_;
-    data_ = new P[local_rows() * local_cols()]();
+    data_ = new P[local_rows * local_cols]();
   }
   else
   {
     delete_device(data_);
-    allocate_device(data_, local_rows() * local_cols());
+    allocate_device(data_, local_rows * local_cols);
   }
 
   nrows_  = rows;
@@ -2690,7 +2823,14 @@ fk::matrix<P, mem, resrc>::matrix(fk::matrix<P, omem, resrc> const &owner,
                                   int const start_row, int const stop_row,
                                   int const start_col, int const stop_col,
                                   bool const delegated)
-    : ref_count_(owner.ref_count_), info_{0, 0}
+    : ref_count_(owner.ref_count_)
+#ifdef ASGARD_USE_SCALAPACK
+      ,
+      info_
+{
+  0, 0
+}
+#endif
 {
   ignore(delegated);
   data_   = nullptr;
@@ -2712,7 +2852,9 @@ fk::matrix<P, mem, resrc>::matrix(fk::matrix<P, omem, resrc> const &owner,
     nrows_  = view_rows;
     ncols_  = view_cols;
     stride_ = owner.stride();
-    info_   = scalapack_matrix_info(nrows_, ncols_);
+#ifdef ASGARD_USE_SCALAPACK
+    info_ = scalapack_matrix_info(nrows_, ncols_);
+#endif
   }
 }
 
@@ -2724,7 +2866,11 @@ fk::matrix<P, mem, resrc>::matrix(fk::vector<P, omem, resrc> const &source,
                                   std::shared_ptr<int> source_ref_count,
                                   int const num_rows, int const num_cols,
                                   int const start_index)
-    : ref_count_(source_ref_count), info_(0, 0)
+    : ref_count_(source_ref_count)
+#ifdef ASGARD_USE_SCALAPACK
+      ,
+      info_(0, 0)
+#endif
 {
   expect(start_index >= 0);
   expect(num_rows > 0);
@@ -2744,7 +2890,9 @@ fk::matrix<P, mem, resrc>::matrix(fk::vector<P, omem, resrc> const &source,
     nrows_  = num_rows;
     ncols_  = num_cols;
     stride_ = num_rows;
-    info_   = scalapack_matrix_info(nrows_, ncols_);
+#ifdef ASGARD_USE_SCALAPACK
+    info_ = scalapack_matrix_info(nrows_, ncols_);
+#endif
   }
 }
 

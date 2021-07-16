@@ -44,25 +44,32 @@ TEST_CASE("Generating scalapack matrix info serial", "[scalapack_matrix_info]")
   }
 }
 
-TEST_CASE("Generating scalapack matrix info parallel", "[scalapack_matrix_info]")
+TEST_CASE("Generating scalapack matrix info parallel",
+          "[scalapack_matrix_info]")
 {
   auto grid = std::make_shared<cblacs_grid>();
   int rows{4}, cols{4};
   int mb{2}, nb{2};
   fk::scalapack_matrix_info info(rows, cols, mb, nb, grid);
-  if (get_num_ranks() == 1) {
+  if (get_num_ranks() == 1)
+  {
     REQUIRE(info.local_rows() == rows);
     REQUIRE(info.local_cols() == cols);
-  } else {
-    REQUIRE(info.local_rows() == rows/mb);
-    REQUIRE(info.local_cols() == cols/nb);
-  }  
+  }
+  else
+  {
+    REQUIRE(info.local_rows() == rows / mb);
+    REQUIRE(info.local_cols() == cols / nb);
+  }
   int *desc = info.get_desc();
   std::array<int, 9> ref_desc;
-  if (get_num_ranks() == 1) {
+  if (get_num_ranks() == 1)
+  {
     ref_desc = {{1, 0, rows, cols, mb, nb, 0, 0, rows}};
-  } else {
-    ref_desc = {{1, 0, rows, cols, mb, nb, 0, 0, rows/mb}};
+  }
+  else
+  {
+    ref_desc = {{1, 0, rows, cols, mb, nb, 0, 0, rows / mb}};
   }
   for (int i = 0; i < 9; ++i)
   {
@@ -72,18 +79,24 @@ TEST_CASE("Generating scalapack matrix info parallel", "[scalapack_matrix_info]"
   rows = 8;
   cols = 8;
   info.resize(rows, cols);
-  if (get_num_ranks() == 1) {
+  if (get_num_ranks() == 1)
+  {
     REQUIRE(info.local_rows() == rows);
     REQUIRE(info.local_cols() == cols);
-  } else {
-    REQUIRE(info.local_rows() == rows/mb);
-    REQUIRE(info.local_cols() == cols/nb);
+  }
+  else
+  {
+    REQUIRE(info.local_rows() == rows / mb);
+    REQUIRE(info.local_cols() == cols / nb);
   }
   desc = info.get_desc();
-  if (get_num_ranks() == 1) {
+  if (get_num_ranks() == 1)
+  {
     ref_desc = {{1, 0, rows, cols, mb, nb, 0, 0, rows}};
-  } else {
-    ref_desc = {{1, 0, rows, cols, mb, nb, 0, 0, rows/mb}};
+  }
+  else
+  {
+    ref_desc = {{1, 0, rows, cols, mb, nb, 0, 0, rows / mb}};
   }
   for (int i = 0; i < 9; ++i)
   {
