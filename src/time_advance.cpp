@@ -288,9 +288,20 @@ implicit_advance(PDE<P> const &pde,
   bcast(&nm, 1, 0);
   int const A_global_size = elem_size * table.size();
   assert(x.size() <= nm);
-
   fk::scalapack_vector_info vinfo(A_global_size, nm, sgrid);
   fk::scalapack_matrix_info minfo(A_global_size, A_global_size, nm, nm, sgrid);
+  std::cout << "descm[" << get_rank() << "]:";
+  for(int i = 0; i < 9; ++i)
+  {
+      std::cout << minfo.get_desc()[i] << " ";
+  }
+  std::cout << std::endl;
+  std::cout << "descv[" << get_rank() << "]:";
+  for(int i = 0; i < 9; ++i)
+  {
+      std::cout << vinfo.get_desc()[i] << " ";
+  }
+  std::cout << std::endl;
 #endif
   auto const bc = boundary_conditions::generate_scaled_bc(
       unscaled_parts[0], unscaled_parts[1], pde, grid.row_start, grid.row_stop,

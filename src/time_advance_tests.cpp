@@ -63,7 +63,7 @@ void time_advance_test(parser const &parse, std::string const &filepath,
   // -- time loop
   for (auto i = 0; i < opts.num_time_steps; ++i)
   {
-    std::cout.setstate(std::ios_base::failbit);
+    //std::cout.setstate(std::ios_base::failbit);
     auto const workspace_limit_MB = 4000;
     auto const time               = i * pde->get_dt();
     auto const update_system      = i == 0;
@@ -74,7 +74,7 @@ void time_advance_test(parser const &parse, std::string const &filepath,
         workspace_limit_MB, update_system);
 
     f_val.resize(sol.size()) = sol;
-    std::cout.clear();
+    //std::cout.clear();
 
     auto const file_path = filepath + std::to_string(i) + ".dat";
     auto const gold      = fk::vector<P>(read_vector_from_txt_file(file_path));

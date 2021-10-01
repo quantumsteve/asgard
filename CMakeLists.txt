@@ -116,14 +116,14 @@ if(FOUND_MKL GREATER_EQUAL 0)
   set(ASGARD_USE_MKL TRUE)
 endif()
 
-#if (ASGARD_USE_SLATE)
-#  find_package(slate)
-#  set(blaspp_DIR /opt/slate/lib/blaspp/)
-#  # Without at least find_package(lapackpp), we get a linking error cannot find "`-llpackpp -llblaspp"
-#  find_package(blaspp)
-#  set(lapackpp_DIR /opt/slate/lib/lapackpp/)
-#  find_package(lapackpp)
-#endif ()
+if (ASGARD_USE_SCALAPACK)
+  set(blaspp_DIR /opt/slate/lib/blaspp/)
+  # Without at least find_package(lapackpp), we get a linking error cannot find "`-llpackpp -llblaspp"
+  find_package(blaspp)
+  set(lapackpp_DIR /opt/slate/lib/lapackpp/)
+  find_package(lapackpp)
+  find_package(slate)
+endif ()
 
 if(ASGARD_USE_OPENMP)
   find_package(OpenMP REQUIRED)  
@@ -295,8 +295,8 @@ if (ASGARD_USE_SCALAPACK)
   find_package(scalapack REQUIRED)
   # Uncomment and remove following line after issue #23 is fixed
   # https://bitbucket.org/icl/slate/issues/23
-  # target_link_libraries (lib_dispatch PRIVATE slate_scalapack_api scalapack MPI::MPI_CXX)
-  target_link_libraries (lib_dispatch PRIVATE scalapack MPI::MPI_CXX)
+  target_link_libraries (lib_dispatch PRIVATE slate_scalapack_api scalapack slate MPI::MPI_CXX)
+  #target_link_libraries (lib_dispatch PRIVATE scalapack MPI::MPI_CXX)
   target_compile_definitions (lib_dispatch PUBLIC ASGARD_USE_SCALAPACK)
 else ()
   target_link_libraries (lib_dispatch PRIVATE LINALG::LINALG)
