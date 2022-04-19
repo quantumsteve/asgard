@@ -369,6 +369,8 @@ target_link_libraries (transformations
   PRIVATE basis batch distribution matlab_utilities pde program_options
   quadrature tensors)
 
+target_link_libraries (moment PUBLIC adapt PRIVATE transformations)
+
 # define the main application and its linking
 add_executable (asgard src/main.cpp)
 
