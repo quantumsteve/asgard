@@ -16,27 +16,32 @@ TEMPLATE_TEST_CASE("Multiwavelet", "[transformations]", double, float)
   auto const do_adapt_levels = true;
   auto const adapt_threshold = 0.5e-1;
 
-  parser const parse(pde_choice, levels, degree, cfl, full_grid,
+  SECTION("Constructor")
+  {
+
+    parser const parse(pde_choice, levels, degree, cfl, full_grid,
                        parser::DEFAULT_MAX_LEVEL, num_steps, use_implicit,
                        do_adapt_levels, adapt_threshold);
 
-  auto pde = make_PDE<TestType>(parse);
-  options const opts(parse);
-  elements::table const check(opts, *pde);
+    auto pde = make_PDE<TestType>(parse);
+    options const opts(parse);
+    elements::table const check(opts, *pde);
 
-  adapt::distributed_grid adaptive_grid(*pde, opts);
-  basis::wavelet_transform<TestType, resource::host> const transformer(opts, *pde);
+    adapt::distributed_grid adaptive_grid(*pde, opts);
+    basis::wavelet_transform<TestType, resource::host> const transformer(opts, *pde);
 
     // -- set coeffs
-  generate_all_coefficients(*pde, transformer);
+    generate_all_coefficients(*pde, transformer);
 
-  // -- generate initial condition vector.
-  auto const initial_condition = adaptive_grid.get_initial_condition(*pde, transformer, opts);
+    // -- generate initial condition vector.
+    auto const initial_condition = adaptive_grid.get_initial_condition(*pde, transformer, opts);
 
+    generate_dimension_mass_mat(*pde, transformer);
 
-
-  std::vector<vector_func<TestType>> md_func;
-  SECTION("Constructor") { moment<TestType> mymoment(md_func); }
+    //std::vector<vector_func<TestType>> md_func;
+    //moment<TestType> mymoment(pde.exact_vector_funcs);
+    //mymoment.createMomentVector(parse, check);
+  }
 }
 
 
