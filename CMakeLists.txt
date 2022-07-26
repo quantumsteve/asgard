@@ -78,6 +78,12 @@ endif ()
 # add compiler flags we always want to use
 string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -Wpedantic")
 
+# Suppress "warning: ISO C++ requires the name after '::~' to be found in the same scope as the name before '::~' [-Wdtor-name]" 
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  #message(ERROR "CMAKE_CXX_COMPILER_ID = ${CMAKE_CXX_COMPILER_ID}")
+  string(APPEND CMAKE_CXX_FLAGS " -Wno-dtor-name")
+endif()
+
 # set up possible commandline input variable defaults (override with -D)
 option (ASGARD_BUILD_TESTS "Build tests for asgard" ON)
 option (ASGARD_BUILD_OPENBLAS "Download and build our own OpenBLAS" OFF)
