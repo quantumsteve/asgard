@@ -19,7 +19,7 @@ template<typename P>
 P nrm2(int *n, P *x, int *incx, resource const resrc = resource::host);
 
 template<typename P>
-void copy(int *n, P *x, int *incx, P *y, int *incy,
+void copy(int *n, P const *x, int *incx, P *y, int *incy,
           resource const resrc = resource::host);
 
 template<typename P>
@@ -27,7 +27,7 @@ P dot(int *n, P *x, int *incx, P *y, int *incy,
       resource const resrc = resource::host);
 
 template<typename P>
-void axpy(int *n, P *alpha, P *x, int *incx, P *y, int *incy,
+void axpy(int *n, P *alpha, P const *x, int *incx, P *y, int *incy,
           resource const resrc = resource::host);
 
 template<typename P>
@@ -35,8 +35,8 @@ void scal(int *n, P *alpha, P *x, int *incx,
           resource const resrc = resource::host);
 
 template<typename P>
-void gemv(char const *trans, int *m, int *n, P *alpha, P *A, int *lda, P *x,
-          int *incx, P *beta, P *y, int *incy,
+void gemv(char const *trans, int *m, int *n, P *alpha, P const *A, int *lda,
+          P const *x, int *incx, P *beta, P *y, int *incy,
           resource const resrc = resource::host);
 
 template<typename P>
