@@ -1,4 +1,6 @@
 #include "asgard_discretization.hpp"
+#include "build_info.hpp"
+#include "matlab_plot.hpp"
 
 using namespace asgard;
 
@@ -67,5 +69,25 @@ int main(int argc, char *argv[])
   wavelet_to_realspace<float>(dims.list, init, grid.grid->get_table(),
                               transformer, default_workspace_cpu_MB,
                               tmp_workspace, real_space);
+
+  asgard::ml::matlab_plot ml_plot;
+  ml_plot.connect(cli_input.get_ml_session_string());
+  asgard::node_out() << "  connected to MATLAB" << '\n';
+
+  // Add the matlab scripts directory to the matlab path
+  ml_plot.add_param(std::string(ASGARD_SCRIPTS_DIR) + "matlab/");
+  ml_plot.call("addpath");
+
+  ml_plot.init_plotting(dims.list, grid.grid->get_table());
+  asgard::fk::vector<float> analytic_solution_realspace(real_space_size);
+  ml_plot.plot_fval(dims.list, grid.grid->get_table(), real_space,
+                    analytic_solution_realspace);
+
+  std::cout << "meow " << real_space.size() << std::endl;
+  for (int i = 0; i < real_space.size(); i++)
+  {
+    std::cout << real_space[i] << std::endl;
+  }
+
   return 0;
 }
