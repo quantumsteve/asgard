@@ -217,6 +217,7 @@ endif ()
 target_compile_features (asgard_obj PUBLIC cxx_std_17)
 set (components
      adapt
+     basic_gmres
      basis
      batch
      boundary_conditions
