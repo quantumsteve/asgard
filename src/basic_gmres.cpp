@@ -1,6 +1,7 @@
+#include <vector>
+
 template<typename scalar>
-int
-solve_gmres(...){
+int solve_gmres(){
     // let's assume we hava a matrix A and rught hand side b, we can only do matrix-vector product
     // we have initial vector x, maybe all zeros
     // we have preconditioner P, we can only apply the preconditioner to a vector
