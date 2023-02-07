@@ -201,6 +201,8 @@ private:
     node_out() << "  coefficient size (MB): " << coefficients_size_MB << '\n';
     node_out() << "  solution vector allocation (MB): "
                << get_MB<P>(output_size) << '\n';
+    node_out() << "  id_to_coords map size (MB): "
+               << elem_table.id_to_coords_size() << '\n';
     node_out() << "  element table allocation (MB): "
                << get_MB<int>(elem_table.get_active_table().size()) << '\n';
     node_out() << "  workspace allocation (MB): "

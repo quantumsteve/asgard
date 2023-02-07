@@ -248,6 +248,7 @@ table::get_child_elements(int64_t const index, options const &opts) const
 // construct element table
 template<typename P>
 table::table(options const &opts, std::vector<dimension<P>> const &dims)
+    : id_to_coords_(&mem_size_)
 {
   // key type is 64 bits; this limits number of unique element ids
   expect(opts.max_level <= dim_to_max_level.at(dims.size()));

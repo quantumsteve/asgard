@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <list>
 #include <map>
+#include <memory_resource>
 #include <unordered_map>
 #include <vector>
 
@@ -53,6 +54,32 @@ map_to_coords(int64_t const id, int const max_level, int const num_dims);
 //   permutations. currently, we cull level combinations whose sum is greater
 //   than the number of levels selected for the simulation.
 // -----------------------------------------------------------------------------
+
+class counting_resource final : public std::pmr::memory_resource
+{
+public:
+  int64_t buf_size_{0};
+
+private:
+  void *do_allocate(size_t __bytes, size_t __alignment) override
+  {
+    buf_size_ += __bytes;
+    return ::operator new(__bytes, std::align_val_t(__alignment));
+  }
+
+  void
+  do_deallocate(void *__p, size_t __bytes, size_t __alignment) noexcept override
+  {
+    buf_size_ -= __bytes;
+    ::operator delete(__p, __bytes, std::align_val_t(__alignment));
+  }
+
+  bool
+  do_is_equal(const std::pmr::memory_resource &__other) const noexcept override
+  {
+    return &__other == this;
+  }
+};
 
 class table
 {
@@ -108,6 +135,17 @@ public:
     return active_element_ids_.size();
   }
 
+  double id_to_coords_size() const
+  {
+    double map_size = mem_size_.buf_size_;
+    int vector_size = size();
+    if (vector_size)
+    {
+      vector_size *= sizeof(int) * id_to_coords_.begin()->second.size();
+    }
+    return (map_size + static_cast<double>(vector_size)) / 1048576.0;
+  }
+
   // static construction helper
   // conceptually private, exposed for testing
   // return the cell indices given a level tuple
@@ -118,9 +156,10 @@ private:
   std::vector<int64_t> active_element_ids_;
 
   // map from element id to coords
-  std::unordered_map<int64_t, fk::vector<int>> id_to_coords_;
+  std::pmr::unordered_map<int64_t, fk::vector<int>> id_to_coords_;
 
   // table of active elements staged for on-device kron list building
+  counting_resource mem_size_;
   fk::vector<int, mem_type::owner, resource::device> active_table_d_;
 };
 
