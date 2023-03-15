@@ -3,18 +3,18 @@
 
 namespace asgard
 {
-// 2D test case using continuity equation, i.e.,
+// 2D collisional landau, i.e.,
 //
-//  df/dt == -v*\grad_x f + div_v( (v-u)f + theta\grad_v f)
+//  df/dt == -v*\grad_x f -E\grad_v f + div_v( (v-u)f + theta\grad_v f)
 //
 //  BC is peridoic in x
 //  BC in v is all inflow in advection for v and Neumann for diffusion in v
 
 template<typename P>
-class PDE_vlasov_two_stream : public PDE<P>
+class PDE_collisional_landau : public PDE<P>
 {
 public:
-  PDE_vlasov_two_stream(parser const &cli_input)
+  PDE_collisional_landau(parser const &cli_input)
       : PDE<P>(cli_input, num_dims_, num_sources_, num_terms_, dimensions_,
                terms_, sources_, exact_vector_funcs_, exact_scalar_func_,
                get_dt_, do_poisson_solve_, has_analytic_soln_, moments_,
@@ -29,14 +29,17 @@ public:
   }
 
 private:
-  static int constexpr num_dims_          = 2;
-  static int constexpr num_sources_       = 0;
-  static int constexpr num_terms_         = 4;
-  static bool constexpr do_poisson_solve_ = true;
-  // disable implicit steps in IMEX
-  static bool constexpr do_collision_operator_ = false;
+  static int constexpr num_dims_               = 2;
+  static int constexpr num_sources_            = 0;
+  static int constexpr num_terms_              = 6;
+  static bool constexpr do_poisson_solve_      = true;
+  static bool constexpr do_collision_operator_ = true;
   static bool constexpr has_analytic_soln_     = false;
   static int constexpr default_degree          = 3;
+
+  static P constexpr nu       = 1.0;    // collision frequency
+  static P constexpr A        = 1.0e-4; // amplitude
+  static P constexpr theta_in = 1.0;
 
   static fk::vector<P>
   initial_condition_dim_x_0(fk::vector<P> const &x, P const t = 0)
@@ -44,7 +47,7 @@ private:
     ignore(t);
     fk::vector<P> fx(x.size());
     std::transform(x.begin(), x.end(), fx.begin(), [](P const x_v) -> P {
-      return 1.0 - 0.5 * std::cos(0.5 * x_v);
+      return 1.0 + A * std::cos(0.5 * x_v);
     });
     return fx;
   }
@@ -54,24 +57,31 @@ private:
   {
     ignore(t);
 
-    P const coefficient = 1.0 / std::sqrt(PI);
+    P const coefficient = 1.0 / std::sqrt(2.0 * PI * theta_in);
 
     fk::vector<P> fx(x.size());
     std::transform(
         x.begin(), x.end(), fx.begin(), [coefficient](P const x_v) -> P {
-          return coefficient * std::pow(x_v, 2) * std::exp(-std::pow(x_v, 2));
+          return coefficient *
+                 std::exp(-0.5 * (1.0 / theta_in) * std::pow(x_v, 2));
         });
     return fx;
+  }
+
+  static P dV(P const x, P const time)
+  {
+    ignore(x);
+    ignore(time);
+    return 1.0;
   }
 
   /* Define the dimension */
   inline static dimension<P> const dim_0 =
       dimension<P>(-2.0 * PI, 2.0 * PI, 4, default_degree,
-                   initial_condition_dim_x_0, nullptr, "x");
+                   initial_condition_dim_x_0, dV, "x");
 
-  inline static dimension<P> const dim_1 =
-      dimension<P>(-2.0 * PI, 2.0 * PI, 3, default_degree,
-                   initial_condition_dim_v_0, nullptr, "v");
+  inline static dimension<P> const dim_1 = dimension<P>(
+      -6.0, 6.0, 3, default_degree, initial_condition_dim_v_0, dV, "v");
 
   inline static std::vector<dimension<P>> const dimensions_ = {dim_0, dim_1};
 
@@ -112,11 +122,14 @@ private:
                                                          moment2};
 
   /* Construct (n, u, theta) */
+  // n = density
+  // u = bulk velocity
+  // theta = temperature
   static P n(P const &x, P const t = 0)
   {
     ignore(t);
 
-    return (1.0 - 0.5 * std::cos(0.5 * x)) * 0.5;
+    return (1.0 + A * std::cos(0.5 * x));
   }
 
   static P u(P const &x, P const t = 0)
@@ -130,9 +143,10 @@ private:
   {
     ignore(t);
     ignore(x);
-    return 1.5;
+    return 1.0;
   }
 
+  // E = -d_x phi
   static P E(P const &x, P const t = 0)
   {
     ignore(t);
@@ -140,6 +154,7 @@ private:
     return 0.0;
   }
 
+  // source for poisson problem is -d_xx phi = n - 1 = S(n)
   static P S(P const &y, P const t = 0)
   {
     ignore(t);
@@ -147,6 +162,7 @@ private:
     return y - 1.0;
   }
 
+  // holds the maximum absolute value of E
   static P MaxAbsE(P const &x, P const t = 0)
   {
     ignore(t);
@@ -169,7 +185,7 @@ private:
   static P e1_g2(P const x, P const time = 0)
   {
     ignore(time);
-    return std::max(P{0.0}, x);
+    return (x > 0.0) ? x : 0.0;
   }
 
   inline static const partial_term<P> e1_pterm_x = partial_term<P>(
@@ -205,7 +221,7 @@ private:
   static P e2_g2(P const x, P const time = 0)
   {
     ignore(time);
-    return std::min(P{0.0}, x);
+    return (x < 0.0) ? x : 0.0;
   }
 
   inline static const partial_term<P> e2_pterm_x = partial_term<P>(
@@ -267,7 +283,7 @@ private:
 
   inline static std::vector<term<P>> const terms_3 = {E_mass_x, div_v};
 
-  // Term 4
+  // Term 4 + 5
   // Penalty Part of E\cdot\grad_v f
   //
 
@@ -278,31 +294,184 @@ private:
     return param->value(x, time);
   }
 
+  static P posOne(P const x, P const time = 0)
+  {
+    ignore(x);
+    ignore(time);
+    return 1.0;
+  }
+
   inline static const partial_term<P> pterm_MaxAbsE_mass_x = partial_term<P>(
       coefficient_type::mass, MaxAbsE_func, nullptr, flux_type::central,
       boundary_condition::periodic, boundary_condition::periodic);
 
-  inline static term<P> const MaxAbsE_mass_x =
+  inline static term<P> const MaxAbsE_mass_x_1 =
       term<P>(true, // time-dependent
               "",   // name
               {pterm_MaxAbsE_mass_x}, imex_flag::imex_explicit);
 
-  inline static const partial_term<P> e_penalty_pterm = partial_term<P>(
-      coefficient_type::penalty, nullptr, nullptr, flux_type::downwind,
-      boundary_condition::neumann, boundary_condition::neumann,
+  inline static term<P> const MaxAbsE_mass_x_2 =
+      term<P>(true, // time-dependent
+              "",   // name
+              {pterm_MaxAbsE_mass_x}, imex_flag::imex_explicit);
+
+  inline static const partial_term<P> pterm_div_v_downwind = partial_term<P>(
+      coefficient_type::div, posOne, nullptr, flux_type::downwind,
+      boundary_condition::dirichlet, boundary_condition::dirichlet,
       homogeneity::homogeneous, homogeneity::homogeneous);
 
-  inline static term<P> const e_penalty =
+  inline static term<P> const div_v_downwind =
       term<P>(false, // time-dependent
               "",    // name
-              {e_penalty_pterm}, imex_flag::imex_explicit);
+              {pterm_div_v_downwind}, imex_flag::imex_explicit);
 
   // Central Part Defined Above (div_v; can do this due to time independence)
 
-  inline static std::vector<term<P>> const terms_4 = {MaxAbsE_mass_x,
-                                                      e_penalty};
+  inline static std::vector<term<P>> const terms_4 = {MaxAbsE_mass_x_1,
+                                                      div_v_downwind};
 
-  inline static term_set<P> const terms_ = {terms_1, terms_2, terms_3, terms_4};
+  inline static std::vector<term<P>> const terms_5 = {MaxAbsE_mass_x_2, div_v};
+
+  // Terms 3 - 5 from vlasov_lb_full_f PDE:
+
+  // Term 3
+  // v\cdot\grad_v f
+  //
+  static P i1_g1(P const x, P const time = 0)
+  {
+    ignore(x);
+    ignore(time);
+    return nu;
+  }
+
+  static P i1_g2(P const x, P const time = 0)
+  {
+    ignore(time);
+    return x;
+  }
+  inline static const partial_term<P> i1_pterm_x = partial_term<P>(
+      coefficient_type::mass, i1_g1, nullptr, flux_type::central,
+      boundary_condition::periodic, boundary_condition::periodic);
+
+  inline static const partial_term<P> i1_pterm_v = partial_term<P>(
+      coefficient_type::div, i1_g2, nullptr, flux_type::downwind,
+      boundary_condition::dirichlet, boundary_condition::dirichlet);
+
+  inline static term<P> const term_i1x =
+      term<P>(false,  // time-dependent
+              "I1_x", // name
+              {i1_pterm_x}, imex_flag::imex_implicit);
+
+  inline static term<P> const term_i1v =
+      term<P>(false,  // time-dependent
+              "I1_v", // name
+              {i1_pterm_v}, imex_flag::imex_implicit);
+
+  inline static std::vector<term<P>> const terms_6 = {term_i1x, term_i1v};
+
+  // Term 4
+  // -u\cdot\grad_v f
+  //
+  static P i2_g1(P const x, P const time = 0)
+  {
+    auto param = param_manager.get_parameter("u");
+    expect(param != nullptr);
+    return -param->value(x, time);
+  }
+
+  static P i2_g2(P const x, P const time = 0)
+  {
+    ignore(x);
+    ignore(time);
+    return nu;
+  }
+
+  inline static const partial_term<P> i2_pterm_x = partial_term<P>(
+      coefficient_type::mass, i2_g1, nullptr, flux_type::central,
+      boundary_condition::periodic, boundary_condition::periodic);
+
+  inline static const partial_term<P> i2_pterm_v = partial_term<P>(
+      coefficient_type::div, i2_g2, nullptr, flux_type::central,
+      boundary_condition::dirichlet, boundary_condition::dirichlet);
+
+  inline static term<P> const term_i2x =
+      term<P>(false,  // time-dependent
+              "I2_x", // name
+              {i2_pterm_x}, imex_flag::imex_implicit);
+
+  inline static term<P> const term_i2v =
+      term<P>(false,  // time-dependent
+              "I2_v", // name
+              {i2_pterm_v}, imex_flag::imex_implicit);
+
+  inline static std::vector<term<P>> const terms_7 = {term_i2x, term_i2v};
+
+  // Term 5
+  // div_v(th\grad_v f)
+  //
+  // Split by LDG
+  //
+  // div_v(th q)
+  // q = \grad_v f
+  static P i3_g1(P const x, P const time = 0)
+  {
+    ignore(x);
+    ignore(time);
+    return 1.0;
+  }
+
+  static P i3_g2(P const x, P const time = 0)
+  {
+    auto param = param_manager.get_parameter("theta");
+    expect(param != nullptr);
+    return param->value(x, time) * nu;
+  }
+
+  inline static const partial_term<P> i3_pterm_x1 = partial_term<P>(
+      coefficient_type::mass, i3_g1, nullptr, flux_type::central,
+      boundary_condition::periodic, boundary_condition::periodic);
+
+  inline static const partial_term<P> i3_pterm_x2 = partial_term<P>(
+      coefficient_type::mass, i3_g2, nullptr, flux_type::central,
+      boundary_condition::periodic, boundary_condition::periodic);
+
+  inline static term<P> const term_i3x =
+      term<P>(false,  // time-dependent
+              "I3_x", // name
+              {i3_pterm_x1, i3_pterm_x2}, imex_flag::imex_implicit);
+
+  static P i3_g3(P const x, P const time = 0)
+  {
+    ignore(x);
+    ignore(time);
+    return 1.0;
+  }
+
+  static P i3_g4(P const x, P const time = 0)
+  {
+    ignore(x);
+    ignore(time);
+    return 1.0;
+  }
+
+  inline static const partial_term<P> i3_pterm_v1 = partial_term<P>(
+      coefficient_type::div, i3_g3, nullptr, flux_type::central,
+      boundary_condition::dirichlet, boundary_condition::dirichlet);
+
+  inline static const partial_term<P> i3_pterm_v2 = partial_term<P>(
+      coefficient_type::grad, i3_g4, nullptr, flux_type::central,
+      boundary_condition::dirichlet, boundary_condition::dirichlet);
+
+  inline static term<P> const term_i3v =
+      term<P>(false,  // time-dependent
+              "I3_v", // name
+              {i3_pterm_v1, i3_pterm_v2}, imex_flag::imex_implicit);
+
+  inline static std::vector<term<P>> const terms_8 = {term_i3x, term_i3v};
+
+  // terms 6, 7, 8 are terms 3,4,5 from vlasov_lb_full_f
+  inline static term_set<P> const terms_ = {terms_1, terms_2, terms_3,
+                                            terms_6, terms_7, terms_8};
 
   inline static std::vector<vector_func<P>> const exact_vector_funcs_ = {};
   inline static scalar_func<P> const exact_scalar_func_               = {};
