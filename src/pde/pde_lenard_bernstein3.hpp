@@ -80,7 +80,11 @@ private:
     return fx;
   }
 
-  static P exact_time(P const time) { return 1.0; }
+  static P exact_time(P const time)
+  {
+    ignore(time);
+    return 1.0;
+  }
 
   //
   // function definitions needed to build up the "dimension", "term", and
