@@ -1,4 +1,5 @@
 #include "kronmult.hpp"
+#include "batch.hpp"
 #include "device/kronmult_cuda.hpp"
 #include "lib_dispatch.hpp"
 #include "tools.hpp"
@@ -312,7 +313,8 @@ execute(PDE<P> const &pde, elements::table const &elem_table,
   fk::matrix<P, mem_type::const_view> const blah(coeff, 0, real_size - 1, 0,
                                                  real_size - 1);
 
-  fk::vector<P *> const operators = [&pde, lda, &program_opts, imex] {
+  fk::matrix<P, mem_type::owner, resource::device> zeros_d(lda, lda);
+  fk::vector<P *> const operators = [&pde, lda, &program_opts, &zeros_d, imex] {
     fk::vector<P *> builder(pde.num_terms * pde.num_dims);
     for (int i = 0; i < pde.num_terms; ++i)
     {
@@ -331,8 +333,8 @@ execute(PDE<P> const &pde, elements::table const &elem_table,
         {
           // fill term portion with 0s for excluded terms
           builder(i * pde.num_dims + j) =
-              fk::matrix<P>(pde.get_coefficients(i, j).ncols(),
-                            pde.get_coefficients(i, j).nrows())
+              fk::matrix<P, mem_type::view, resource::device>(
+                  zeros_d, 0, lda - 1, 0, lda - 1)
                   .data();
         }
       }
@@ -371,10 +373,10 @@ template<typename P>
 fk::vector<P, mem_type::owner, resource::host>
 execute(PDE<P> const &pde, elements::table const &elem_table,
         options const &program_opts, element_subgrid const &my_subgrid,
-        int const workspace_size_MB,
         fk::vector<P, mem_type::owner, resource::host> const &x,
         imex_flag const imex)
 {
+  int const workspace_size_MB = program_opts.memory_limit;
   auto const grids = decompose(pde, elem_table, my_subgrid, workspace_size_MB);
 
   auto const degree     = pde.get_dimensions()[0].get_degree();
@@ -413,14 +415,12 @@ decompose(PDE<double> const &pde, elements::table const &elem_table,
 template fk::vector<float, mem_type::owner, resource::host>
 execute(PDE<float> const &pde, elements::table const &elem_table,
         options const &program_options, element_subgrid const &my_subgrid,
-        int const workspace_size_MB,
         fk::vector<float, mem_type::owner, resource::host> const &x,
         imex_flag const imex);
 
 template fk::vector<double, mem_type::owner, resource::host>
 execute(PDE<double> const &pde, elements::table const &elem_table,
         options const &program_options, element_subgrid const &my_subgrid,
-        int const workspace_size_MB,
         fk::vector<double, mem_type::owner, resource::host> const &x,
         imex_flag const imex);
 

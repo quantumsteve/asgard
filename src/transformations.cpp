@@ -45,24 +45,6 @@ kron_d(std::vector<fk::vector<P>> const &operands, int const num_prods)
       .single_column_kron(operands[num_prods - 1]);
 }
 
-/* calculate required mb for the matrix resulting from the kron prod of a
- * sequence of matrices */
-template<typename P>
-int kron_matrix_MB(
-    std::vector<fk::matrix<P, mem_type::const_view>> const &kron_matrices)
-{
-  long r = 1;
-  long c = 1;
-
-  for (int i = 0; i < static_cast<int>(kron_matrices.size()); ++i)
-  {
-    r *= kron_matrices[i].nrows();
-    c *= kron_matrices[i].ncols();
-  }
-
-  return r * c * sizeof(P) * 1e-6;
-}
-
 /* given a vector of matrices, return the Kronecker product of all of them in
  * order */
 template<typename P>
@@ -223,12 +205,11 @@ void wavelet_to_realspace(
     PDE<P> const &pde, fk::vector<P> const &wave_space,
     elements::table const &table,
     basis::wavelet_transform<P, resource::host> const &transformer,
-    int const memory_limit_MB,
     std::array<fk::vector<P, mem_type::view, resource::host>, 2> &workspace,
     fk::vector<P> &real_space)
 {
   wavelet_to_realspace(pde.get_dimensions(), wave_space, table, transformer,
-                       memory_limit_MB, workspace, real_space);
+                       workspace, real_space);
 }
 
 template<typename P>
@@ -236,12 +217,9 @@ void wavelet_to_realspace(
     std::vector<dimension<P>> const &dims, fk::vector<P> const &wave_space,
     elements::table const &table,
     basis::wavelet_transform<P, resource::host> const &transformer,
-    int const memory_limit_MB,
     std::array<fk::vector<P, mem_type::view, resource::host>, 2> &workspace,
     fk::vector<P> &real_space)
 {
-  expect(memory_limit_MB > 0);
-
   std::vector<batch_chain<P, resource::host>> chain;
 
   /* generate the wavelet-to-real-space transformation matrices for each
@@ -274,9 +252,6 @@ void wavelet_to_realspace(
       kron_matrices.push_back(sub_matrix);
     }
 
-    /* compute the amount of needed memory */
-    expect(kron_matrix_MB(kron_matrices) <= memory_limit_MB);
-
     /* create a view of a section of the wave space vector */
     fk::vector<P, mem_type::const_view> const x(wave_space, i * stride,
                                                 (i + 1) * stride - 1);
@@ -299,12 +274,9 @@ void wavelet_to_realspace(
     std::vector<dimension_description<P>> const &dims,
     fk::vector<P> const &wave_space, elements::table const &table,
     basis::wavelet_transform<P, resource::host> const &transformer,
-    int const memory_limit_MB,
     std::array<fk::vector<P, mem_type::view, resource::host>, 2> &workspace,
     fk::vector<P> &real_space)
 {
-  expect(memory_limit_MB > 0);
-
   std::vector<batch_chain<P, resource::host>> chain;
 
   /* generate the wavelet-to-real-space transformation matrices for each
@@ -336,9 +308,6 @@ void wavelet_to_realspace(
           id * degree, (id + 1) * degree - 1);
       kron_matrices.push_back(sub_matrix);
     }
-
-    /* compute the amount of needed memory */
-    expect(kron_matrix_MB(kron_matrices) <= memory_limit_MB);
 
     /* create a view of a section of the wave space vector */
     fk::vector<P, mem_type::const_view> const x(wave_space, i * stride,
@@ -428,6 +397,37 @@ combine_dimensions(int const degree, elements::table const &table,
   return combined;
 }
 
+template<typename P>
+fk::vector<P> sum_separable_funcs(
+    std::vector<md_func_type<P>> const &funcs,
+    std::vector<dimension<P>> const &dims,
+    adapt::distributed_grid<P> const &grid,
+    basis::wavelet_transform<P, resource::host> const &transformer,
+    int const degree, P const time)
+{
+  auto const my_subgrid = grid.get_subgrid(get_rank());
+  // FIXME assume uniform degree
+  auto const dof = std::pow(degree, dims.size()) * my_subgrid.nrows();
+  fk::vector<P> combined(dof);
+  for (auto const &md_func : funcs)
+  {
+    expect(md_func.size() >= dims.size());
+
+    // calculate the time multiplier if there is an extra function for time
+    // TODO: this is a hack to append a time function.. md_func_type should be a
+    // struct since this last function is technically a scalar_func
+    bool has_time_func      = md_func.size() == dims.size() + 1 ? true : false;
+    P const time_multiplier = has_time_func
+                                  ? md_func.back()(fk::vector<P>(), time)[0]
+                                  : static_cast<P>(1.0);
+    auto const func_vect    = transform_and_combine_dimensions(
+        dims, md_func, grid.get_table(), transformer, my_subgrid.row_start,
+        my_subgrid.row_stop, degree, time, time_multiplier);
+    fm::axpy(func_vect, combined);
+  }
+  return combined;
+}
+
 /* explicit instantiations */
 template fk::matrix<double>
 recursive_kron(std::vector<fk::matrix<double, mem_type::view>> &kron_matrices,
@@ -472,7 +472,6 @@ template void wavelet_to_realspace(
     PDE<double> const &pde, fk::vector<double> const &wave_space,
     elements::table const &table,
     basis::wavelet_transform<double, resource::host> const &transformer,
-    int const memory_limit_MB,
     std::array<fk::vector<double, mem_type::view, resource::host>, 2>
         &workspace,
     fk::vector<double> &real_space);
@@ -480,14 +479,12 @@ template void wavelet_to_realspace(
     PDE<float> const &pde, fk::vector<float> const &wave_space,
     elements::table const &table,
     basis::wavelet_transform<float, resource::host> const &transformer,
-    int const memory_limit_MB,
     std::array<fk::vector<float, mem_type::view, resource::host>, 2> &workspace,
     fk::vector<float> &real_space);
 template void wavelet_to_realspace(
     std::vector<dimension<double>> const &pde,
     fk::vector<double> const &wave_space, elements::table const &table,
     basis::wavelet_transform<double, resource::host> const &transformer,
-    int const memory_limit_MB,
     std::array<fk::vector<double, mem_type::view, resource::host>, 2>
         &workspace,
     fk::vector<double> &real_space);
@@ -495,14 +492,12 @@ template void wavelet_to_realspace(
     std::vector<dimension<float>> const &pde,
     fk::vector<float> const &wave_space, elements::table const &table,
     basis::wavelet_transform<float, resource::host> const &transformer,
-    int const memory_limit_MB,
     std::array<fk::vector<float, mem_type::view, resource::host>, 2> &workspace,
     fk::vector<float> &real_space);
 template void wavelet_to_realspace(
     std::vector<dimension_description<double>> const &pde,
     fk::vector<double> const &wave_space, elements::table const &table,
     basis::wavelet_transform<double, resource::host> const &transformer,
-    int const memory_limit_MB,
     std::array<fk::vector<double, mem_type::view, resource::host>, 2>
         &workspace,
     fk::vector<double> &real_space);
@@ -510,7 +505,6 @@ template void wavelet_to_realspace(
     std::vector<dimension_description<float>> const &pde,
     fk::vector<float> const &wave_space, elements::table const &table,
     basis::wavelet_transform<float, resource::host> const &transformer,
-    int const memory_limit_MB,
     std::array<fk::vector<float, mem_type::view, resource::host>, 2> &workspace,
     fk::vector<float> &real_space);
 
@@ -529,4 +523,18 @@ template void
 combine_dimensions<double>(int const, elements::table const &, int const,
                            int const, std::vector<fk::vector<double>> const &,
                            double const, fk::vector<double, mem_type::view>);
+
+template fk::vector<float> sum_separable_funcs(
+    std::vector<md_func_type<float>> const &funcs,
+    std::vector<dimension<float>> const &dims,
+    adapt::distributed_grid<float> const &grid,
+    basis::wavelet_transform<float, resource::host> const &transformer,
+    int const degree, float const time);
+
+template fk::vector<double> sum_separable_funcs(
+    std::vector<md_func_type<double>> const &funcs,
+    std::vector<dimension<double>> const &dims,
+    adapt::distributed_grid<double> const &grid,
+    basis::wavelet_transform<double, resource::host> const &transformer,
+    int const degree, double const time);
 } // namespace asgard

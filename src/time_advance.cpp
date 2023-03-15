@@ -12,6 +12,9 @@
 #include "cblacs_grid.hpp"
 #include "scalapack_vector_info.hpp"
 #endif
+#ifdef ASGARD_USE_MATLAB
+#include "matlab_plot.hpp"
+#endif
 #include <climits>
 
 namespace asgard::time_advance
@@ -45,8 +48,7 @@ adaptive_advance(method const step_method, PDE<P> &pde,
                  adapt::distributed_grid<P> &adaptive_grid,
                  basis::wavelet_transform<P, resource::host> const &transformer,
                  options const &program_opts, fk::vector<P> const &x_orig,
-                 P const time, int const workspace_size_MB,
-                 bool const update_system)
+                 P const time, bool const update_system)
 {
   if (!program_opts.do_adapt_levels)
   {
@@ -58,15 +60,14 @@ adaptive_advance(method const step_method, PDE<P> &pde,
     {
     case (method::exp):
       return explicit_advance(pde, adaptive_grid, transformer, program_opts,
-                              unscaled_parts, x_orig, workspace_size_MB, time);
+                              unscaled_parts, x_orig, time);
     case (method::imp):
       return implicit_advance(pde, adaptive_grid, transformer, program_opts,
-                              unscaled_parts, x_orig, workspace_size_MB, time,
-                              update_system);
+                              unscaled_parts, x_orig, time, update_system);
     case (method::imex):
       return imex_advance(pde, adaptive_grid, transformer, program_opts,
-                          unscaled_parts, x_orig, workspace_size_MB, time,
-                          program_opts.solver, update_system);
+                          unscaled_parts, x_orig, time, program_opts.solver,
+                          update_system);
     };
   }
 
@@ -92,15 +93,14 @@ adaptive_advance(method const step_method, PDE<P> &pde,
       {
       case (method::exp):
         return explicit_advance(pde, adaptive_grid, transformer, program_opts,
-                                unscaled_parts, y, workspace_size_MB, time);
+                                unscaled_parts, y, time);
       case (method::imp):
         return implicit_advance(pde, adaptive_grid, transformer, program_opts,
-                                unscaled_parts, y, workspace_size_MB, time,
-                                refining);
+                                unscaled_parts, y, time, refining);
       case (method::imex):
         return imex_advance(pde, adaptive_grid, transformer, program_opts,
-                            unscaled_parts, y, workspace_size_MB, time,
-                            program_opts.solver, refining);
+                            unscaled_parts, y, time, program_opts.solver,
+                            refining);
       default:
         return fk::vector<P>();
       };
@@ -142,8 +142,7 @@ explicit_advance(PDE<P> const &pde,
                  options const &program_opts,
                  std::array<boundary_conditions::unscaled_bc_parts<P>, 2> const
                      &unscaled_parts,
-                 fk::vector<P> const &x_orig, int const workspace_size_MB,
-                 P const time)
+                 fk::vector<P> const &x_orig, P const time)
 {
   auto const &table    = adaptive_grid.get_table();
   auto const &plan     = adaptive_grid.get_distrib_plan();
@@ -179,8 +178,7 @@ explicit_advance(PDE<P> const &pde,
   // FIXME eventually want to extract RK step into function
   // -- RK step 1
   auto const apply_id = tools::timer.start("kronmult_setup");
-  auto fx =
-      kronmult::execute(pde, table, program_opts, grid, workspace_size_MB, x);
+  auto fx             = kronmult::execute(pde, table, program_opts, grid, x);
 
   tools::timer.stop(apply_id);
   reduce_results(fx, reduced_fx, plan, get_rank());
@@ -204,7 +202,7 @@ explicit_advance(PDE<P> const &pde,
 
   // -- RK step 2
   tools::timer.start(apply_id);
-  fx = kronmult::execute(pde, table, program_opts, grid, workspace_size_MB, x);
+  fx = kronmult::execute(pde, table, program_opts, grid, x);
   tools::timer.stop(apply_id);
   reduce_results(fx, reduced_fx, plan, get_rank());
 
@@ -232,7 +230,7 @@ explicit_advance(PDE<P> const &pde,
 
   // -- RK step 3
   tools::timer.start(apply_id);
-  fx = kronmult::execute(pde, table, program_opts, grid, workspace_size_MB, x);
+  fx = kronmult::execute(pde, table, program_opts, grid, x);
   tools::timer.stop(apply_id);
   reduce_results(fx, reduced_fx, plan, get_rank());
 
@@ -274,8 +272,8 @@ implicit_advance(PDE<P> const &pde,
                  options const &program_opts,
                  std::array<boundary_conditions::unscaled_bc_parts<P>, 2> const
                      &unscaled_parts,
-                 fk::vector<P> const &x_orig, int const workspace_size_MB,
-                 P const time, bool const update_system)
+                 fk::vector<P> const &x_orig, P const time,
+                 bool const update_system)
 {
   expect(time >= 0);
 #ifdef ASGARD_USE_SCALAPACK
@@ -321,7 +319,7 @@ implicit_advance(PDE<P> const &pde,
       time + dt);
   fm::axpy(bc, x, dt);
 
-  if (first_time || update_system)
+  if (solver != solve_opts::gmres && (first_time || update_system))
   {
     first_time = false;
 
@@ -369,11 +367,6 @@ implicit_advance(PDE<P> const &pde,
       return x;
 #endif
     }
-    else if (solver == solve_opts::gmres)
-    {
-      ignore(ipiv);
-      ignore(ipiv_size);
-    }
   } // end first time/update system
 
   if (solver == solve_opts::direct)
@@ -396,14 +389,12 @@ implicit_advance(PDE<P> const &pde,
   }
   else if (solver == solve_opts::gmres)
   {
-    P const tolerance  = std::is_same_v<float, P> ? 1e-3 : 1e-8;
-    int const restart  = A_local_cols;
-    int const max_iter = A_local_cols;
-    fk::vector<P> fx(x.size());
-    tools::timer.start("gmres_iteration");
-    solver::simple_gmres(pde, table, program_opts, grid, workspace_size_MB, fx,
-                         x, fk::matrix<P>(), restart, max_iter, tolerance);
-    tools::timer.stop("gmres_iteration");
+    P const tolerance  = program_opts.gmres_tolerance;
+    int const restart  = program_opts.gmres_inner_iterations;
+    int const max_iter = program_opts.gmres_outer_iterations;
+    fk::vector<P> fx(x);
+    solver::simple_gmres(pde, table, program_opts, grid, fx, x, fk::matrix<P>(),
+                         restart, max_iter, tolerance);
     return fx;
   }
   return x;
@@ -418,8 +409,8 @@ imex_advance(PDE<P> &pde, adapt::distributed_grid<P> const &adaptive_grid,
              options const &program_opts,
              std::array<boundary_conditions::unscaled_bc_parts<P>, 2> const
                  &unscaled_parts,
-             fk::vector<P> const &x_orig, int const workspace_size_MB,
-             P const time, solve_opts const solver, bool const update_system)
+             fk::vector<P> const &x_orig, P const time, solve_opts const solver,
+             bool const update_system)
 {
   ignore(unscaled_parts);
   ignore(solver);
@@ -428,7 +419,6 @@ imex_advance(PDE<P> &pde, adapt::distributed_grid<P> const &adaptive_grid,
   expect(time >= 0);
   expect(pde.moments.size() > 0);
 
-  static std::vector<int> ipiv;
   static bool first_time = true;
 
   // create 1D version of PDE and element table for wavelet->realspace mappings
@@ -445,21 +435,21 @@ imex_advance(PDE<P> &pde, adapt::distributed_grid<P> const &adaptive_grid,
                        fk::vector<P, mem_type::view, resource::host>(
                            workspace, dense_size, dense_size * 2 - 1)};
 
-  auto const &table   = adaptive_grid.get_table();
-  auto const &plan    = adaptive_grid.get_distrib_plan();
-  auto const dt       = pde.get_dt();
-  int const degree    = pde.get_dimensions()[0].get_degree();
-  int const level     = pde.get_dimensions()[0].get_level();
-  P const min         = pde.get_dimensions()[0].domain_min;
-  P const max         = pde.get_dimensions()[0].domain_max;
-  int const elem_size = static_cast<int>(std::pow(degree, pde.num_dims));
+  auto const &table    = adaptive_grid.get_table();
+  auto const &plan     = adaptive_grid.get_distrib_plan();
+  auto const dt        = pde.get_dt();
+  int const degree     = pde.get_dimensions()[0].get_degree();
+  int const level      = pde.get_dimensions()[0].get_level();
+  P const min          = pde.get_dimensions()[0].domain_min;
+  P const max          = pde.get_dimensions()[0].domain_max;
+  int const elem_size  = static_cast<int>(std::pow(degree, pde.num_dims));
+  int const N_elements = std::pow(2, level);
 
   fk::vector<P> x(x_orig);
   static auto nodes = gen_realspace_nodes(degree, level, min, max);
 
   auto const &grid       = adaptive_grid.get_subgrid(get_rank());
   int const A_local_rows = elem_size * grid.nrows();
-  int const A_local_cols = elem_size * grid.ncols();
 
   fk::vector<P> reduced_fx(A_local_rows);
 
@@ -472,26 +462,98 @@ imex_advance(PDE<P> &pde, adapt::distributed_grid<P> const &adaptive_grid,
       m.createMomentReducedMatrix(pde, adaptive_grid.get_table());
       expect(m.get_moment_matrix().nrows() > 0);
     }
+
+    if (pde.do_poisson_solve)
+    {
+      // Setup poisson matrix initially
+      solver::setup_poisson(N_elements, min, max, pde.poisson_diag,
+                            pde.poisson_off_diag);
+    }
+  }
+
+  auto do_poisson_update = [&](fk::vector<P> const &f_in) {
+    // Get 0th moment
+    fk::vector<P> mom0(dense_size);
+    fk::vector<P> mom0_real(dense_size);
+    fm::gemv(pde.moments[0].get_moment_matrix(), f_in, mom0);
+    wavelet_to_realspace<P>(pde_1d, mom0, adaptive_grid_1d.get_table(),
+                            transformer, tmp_workspace, mom0_real);
+    param_manager.get_parameter("n")->value = [mom0_real](P const x_v,
+                                                          P const t = 0) -> P {
+      ignore(t);
+      return interp1(nodes, mom0_real, {x_v})[0];
+    };
+
+    // Compute source for poisson
+    fk::vector<P> poisson_source(dense_size);
+    std::transform(mom0_real.begin(), mom0_real.end(), poisson_source.begin(),
+                   [](P const &x_v) {
+                     return param_manager.get_parameter("S")->value(x_v, 0.0);
+                   });
+
+    fk::vector<P> phi(dense_size);
+    fk::vector<P> poisson_E(dense_size);
+    solver::poisson_solver(poisson_source, pde.poisson_diag,
+                           pde.poisson_off_diag, phi, poisson_E, degree - 1,
+                           N_elements, min, max, static_cast<P>(0.0),
+                           static_cast<P>(0.0), solver::poisson_bc::periodic);
+
+    param_manager.get_parameter("E")->value = [poisson_E](P const x_v,
+                                                          P const t = 0) -> P {
+      ignore(t);
+      return interp1(nodes, poisson_E, {x_v})[0];
+    };
+
+    P const max_E = *std::max_element(poisson_E.begin(), poisson_E.end(),
+                                      [](const P &x_v, const P &y_v) {
+                                        return std::abs(x_v) < std::abs(y_v);
+                                      });
+
+    param_manager.get_parameter("MaxAbsE")->value =
+        [max_E](P const x_v, P const t = 0) -> P {
+      ignore(t);
+      ignore(x_v);
+      return max_E;
+    };
+
+    // Update coeffs
+    generate_all_coefficients<P>(pde, transformer);
+
+#ifdef ASGARD_USE_MATLAB
+    auto &ml_plot = ml::matlab_plot::get_instance();
+    // TODO: add plot_freq check if keeping this much longer
+    ml_plot.reset_params();
+    ml_plot.add_param({1, static_cast<size_t>(nodes.size())}, nodes);
+    ml_plot.add_param({1, static_cast<size_t>(nodes.size())}, poisson_E);
+    ml_plot.add_param({1, static_cast<size_t>(nodes.size())}, poisson_source);
+    ml_plot.add_param({1, static_cast<size_t>(nodes.size())}, phi);
+    ml_plot.add_param(time);
+    ml_plot.call("electric");
+#endif
+  };
+
+  if (pde.do_poisson_solve)
+  {
+    do_poisson_update(x);
   }
 
   // Explicit step (f_2s)
   auto const apply_id = tools::timer.start("kronmult_setup");
-  auto fx = kronmult::execute(pde, table, program_opts, grid, workspace_size_MB,
-                              x, imex_flag::imex_explicit);
+  auto fx             = kronmult::execute(pde, table, program_opts, grid, x,
+                              imex_flag::imex_explicit);
   tools::timer.stop(apply_id);
   reduce_results(fx, reduced_fx, plan, get_rank());
 
   fk::vector<P> f_2s(x_orig.size());
   exchange_results(reduced_fx, f_2s, elem_size, plan, get_rank());
-  fm::axpy(f_2s, x, dt);
+  fm::axpy(f_2s, x, dt); // x here is f(1)
 
   // Create rho_2s
   fk::vector<P> mom0(dense_size);
   fk::vector<P> mom0_real(dense_size);
   fm::gemv(pde.moments[0].get_moment_matrix(), x, mom0);
   wavelet_to_realspace<P>(pde_1d, mom0, adaptive_grid_1d.get_table(),
-                          transformer, workspace_size_MB, tmp_workspace,
-                          mom0_real);
+                          transformer, tmp_workspace, mom0_real);
   param_manager.get_parameter("n")->value = [mom0_real](P const x_v,
                                                         P const t = 0) -> P {
     ignore(t);
@@ -503,8 +565,7 @@ imex_advance(PDE<P> &pde, adapt::distributed_grid<P> const &adaptive_grid,
   fk::vector<P> mom1_real(dense_size);
   fm::gemv(pde.moments[1].get_moment_matrix(), x, mom1);
   wavelet_to_realspace<P>(pde_1d, mom1, adaptive_grid_1d.get_table(),
-                          transformer, workspace_size_MB, tmp_workspace,
-                          mom1_real);
+                          transformer, tmp_workspace, mom1_real);
   param_manager.get_parameter("u")->value = [mom1_real](P const x_v,
                                                         P const t = 0) -> P {
     return interp1(nodes, mom1_real, {x_v})[0] /
@@ -515,8 +576,7 @@ imex_advance(PDE<P> &pde, adapt::distributed_grid<P> const &adaptive_grid,
   fk::vector<P> mom2_real(dense_size);
   fm::gemv(pde.moments[2].get_moment_matrix(), x, mom2);
   wavelet_to_realspace<P>(pde_1d, mom2, adaptive_grid_1d.get_table(),
-                          transformer, workspace_size_MB, tmp_workspace,
-                          mom2_real);
+                          transformer, tmp_workspace, mom2_real);
   param_manager.get_parameter("theta")->value =
       [mom2_real](P const x_v, P const t = 0) -> P {
     P const u = param_manager.get_parameter("u")->value(x_v, t);
@@ -529,66 +589,70 @@ imex_advance(PDE<P> &pde, adapt::distributed_grid<P> const &adaptive_grid,
   generate_all_coefficients<P>(pde, transformer);
 
   // f2 now
-  P const tolerance  = std::is_same_v<float, P> ? 1e-6 : 1e-12;
-  int const restart  = A_local_cols;
-  int const max_iter = A_local_cols;
-  fk::vector<P> f_2(x.size());
-  solver::simple_gmres(pde, table, program_opts, grid, workspace_size_MB, f_2,
-                       x, fk::matrix<P>(), restart, max_iter, tolerance);
+  P const tolerance  = program_opts.gmres_tolerance;
+  int const restart  = program_opts.gmres_inner_iterations;
+  int const max_iter = program_opts.gmres_outer_iterations;
+  fk::vector<P> f_2(x);
+
+  if (pde.do_collision_operator)
+  {
+    // f2 now
+    solver::simple_gmres(pde, table, program_opts, grid, f_2, x,
+                         fk::matrix<P>(), restart, max_iter, tolerance,
+                         imex_flag::imex_implicit);
+  }
+  else
+  {
+    // for non-collision: f_2 = f_2s
+    fm::copy(x, f_2);
+  }
 
   // --------------------------------
   // Third Stage
   // --------------------------------
-  fm::copy(x_orig, x); // f0
+  fm::copy(x_orig, x); // x here is now f0
 
-  fk::vector<P> f2_x(f_2);
-  fm::axpy(x, f2_x); // f0 + f2
+  if (pde.do_poisson_solve)
+  {
+    do_poisson_update(f_2);
+  }
 
   tools::timer.start("kronmult_setup");
-  fx = kronmult::execute(pde, table, program_opts, grid, workspace_size_MB,
-                         f2_x);
+  fx = kronmult::execute(pde, table, program_opts, grid, f_2,
+                         imex_flag::imex_explicit);
   tools::timer.stop(apply_id);
   reduce_results(fx, reduced_fx, plan, get_rank());
 
-  fk::vector<P> f_3s(x_orig.size());
-  exchange_results(reduced_fx, f_3s, elem_size, plan, get_rank());
-  fm::axpy(f_3s, x, static_cast<P>(0.5) * dt); // f0 + 0.5*dt*apply_A(f0+f_2)
+  fk::vector<P> t_f2(x_orig.size());
+  exchange_results(reduced_fx, t_f2, elem_size, plan, get_rank());
+  fm::axpy(t_f2, f_2, dt); // f_2 here is now f3 = f_2 + dt*T(f2)
 
-  tools::timer.start("kronmult_setup");
-  fx = kronmult::execute(pde, table, program_opts, grid, workspace_size_MB, f_2,
-                         imex_flag::imex_implicit);
-  tools::timer.stop(apply_id);
-  reduce_results(fx, reduced_fx, plan, get_rank());
-
-  exchange_results(reduced_fx, f_3s, elem_size, plan, get_rank());
-  fm::axpy(f_3s, x, static_cast<P>(0.5) * dt);
+  fm::axpy(f_2, x);                 // x is now f0 + f3
+  fm::scal(static_cast<P>(0.5), x); // x = 0.5 * (f0 + f3)
 
   // Create rho_3s
   // TODO: refactor into more generic function
-  fm::gemv(pde.moments[0].get_moment_matrix(), x, mom0);
+  fm::gemv(pde.moments[0].get_moment_matrix(), f_2, mom0);
   wavelet_to_realspace<P>(pde_1d, mom0, adaptive_grid_1d.get_table(),
-                          transformer, workspace_size_MB, tmp_workspace,
-                          mom0_real);
+                          transformer, tmp_workspace, mom0_real);
   param_manager.get_parameter("n")->value = [mom0_real](P const x_v,
                                                         P const t = 0) -> P {
     ignore(t);
     return interp1(nodes, mom0_real, {x_v})[0];
   };
 
-  fm::gemv(pde.moments[1].get_moment_matrix(), x, mom1);
+  fm::gemv(pde.moments[1].get_moment_matrix(), f_2, mom1);
   wavelet_to_realspace<P>(pde_1d, mom1, adaptive_grid_1d.get_table(),
-                          transformer, workspace_size_MB, tmp_workspace,
-                          mom1_real);
+                          transformer, tmp_workspace, mom1_real);
   param_manager.get_parameter("u")->value = [mom1_real](P const x_v,
                                                         P const t = 0) -> P {
     return interp1(nodes, mom1_real, {x_v})[0] /
            param_manager.get_parameter("n")->value(x_v, t);
   };
 
-  fm::gemv(pde.moments[2].get_moment_matrix(), x, mom2);
+  fm::gemv(pde.moments[2].get_moment_matrix(), f_2, mom2);
   wavelet_to_realspace<P>(pde_1d, mom2, adaptive_grid_1d.get_table(),
-                          transformer, workspace_size_MB, tmp_workspace,
-                          mom2_real);
+                          transformer, tmp_workspace, mom2_real);
   param_manager.get_parameter("theta")->value =
       [mom2_real](P const x_v, P const t = 0) -> P {
     P const u = param_manager.get_parameter("u")->value(x_v, t);
@@ -601,11 +665,19 @@ imex_advance(PDE<P> &pde, adapt::distributed_grid<P> const &adaptive_grid,
   generate_all_coefficients<P>(pde, transformer);
 
   // Final stage f3
-  fk::vector<P> f_3(x.size());
-  solver::simple_gmres(pde, table, program_opts, grid, workspace_size_MB, f_3,
-                       x, fk::matrix<P>(), restart, max_iter, tolerance);
-
-  return f_3;
+  if (pde.do_collision_operator)
+  {
+    // Final stage f3
+    fk::vector<P> f_3(x);
+    solver::simple_gmres(pde, table, program_opts, grid, f_3, x,
+                         fk::matrix<P>(), restart, max_iter, tolerance,
+                         imex_flag::imex_implicit);
+    return f_3;
+  }
+  else
+  {
+    return x;
+  }
 }
 
 template fk::vector<double> adaptive_advance(
@@ -613,14 +685,14 @@ template fk::vector<double> adaptive_advance(
     adapt::distributed_grid<double> &adaptive_grid,
     basis::wavelet_transform<double, resource::host> const &transformer,
     options const &program_opts, fk::vector<double> const &x, double const time,
-    int const workspace_size_MB, bool const update_system);
+    bool const update_system);
 
 template fk::vector<float> adaptive_advance(
     method const step_method, PDE<float> &pde,
     adapt::distributed_grid<float> &adaptive_grid,
     basis::wavelet_transform<float, resource::host> const &transformer,
     options const &program_opts, fk::vector<float> const &x, float const time,
-    int const workspace_size_MB, bool const update_system);
+    bool const update_system);
 
 template fk::vector<double> explicit_advance(
     PDE<double> const &pde,
@@ -629,8 +701,7 @@ template fk::vector<double> explicit_advance(
     options const &program_opts,
     std::array<boundary_conditions::unscaled_bc_parts<double>, 2> const
         &unscaled_parts,
-    fk::vector<double> const &x, int const workspace_size_MB,
-    double const time);
+    fk::vector<double> const &x, double const time);
 
 template fk::vector<float> explicit_advance(
     PDE<float> const &pde, adapt::distributed_grid<float> const &adaptive_grid,
@@ -638,7 +709,7 @@ template fk::vector<float> explicit_advance(
     options const &program_opts,
     std::array<boundary_conditions::unscaled_bc_parts<float>, 2> const
         &unscaled_parts,
-    fk::vector<float> const &x, int const workspace_size_MB, float const time);
+    fk::vector<float> const &x, float const time);
 
 template fk::vector<double> implicit_advance(
     PDE<double> const &pde,
@@ -647,8 +718,8 @@ template fk::vector<double> implicit_advance(
     options const &program_opts,
     std::array<boundary_conditions::unscaled_bc_parts<double>, 2> const
         &unscaled_parts,
-    fk::vector<double> const &host_space, int const workspace_size_MB,
-    double const time, bool const update_system);
+    fk::vector<double> const &host_space, double const time,
+    bool const update_system);
 
 template fk::vector<float> implicit_advance(
     PDE<float> const &pde, adapt::distributed_grid<float> const &adaptive_grid,
@@ -656,8 +727,7 @@ template fk::vector<float> implicit_advance(
     options const &program_opts,
     std::array<boundary_conditions::unscaled_bc_parts<float>, 2> const
         &unscaled_parts,
-    fk::vector<float> const &x, int const workspace_size_MB, float const time,
-    bool const update_system);
+    fk::vector<float> const &x, float const time, bool const update_system);
 
 template fk::vector<double> imex_advance(
     PDE<double> &pde, adapt::distributed_grid<double> const &adaptive_grid,
@@ -665,8 +735,8 @@ template fk::vector<double> imex_advance(
     options const &program_opts,
     std::array<boundary_conditions::unscaled_bc_parts<double>, 2> const
         &unscaled_parts,
-    fk::vector<double> const &x_orig, int const workspace_size_MB,
-    double const time, solve_opts const solver, bool const update_system);
+    fk::vector<double> const &x_orig, double const time,
+    solve_opts const solver, bool const update_system);
 
 template fk::vector<float>
 imex_advance(PDE<float> &pde,
@@ -675,8 +745,7 @@ imex_advance(PDE<float> &pde,
              options const &program_opts,
              std::array<boundary_conditions::unscaled_bc_parts<float>, 2> const
                  &unscaled_parts,
-             fk::vector<float> const &x_orig, int const workspace_size_MB,
-             float const time, solve_opts const solver,
-             bool const update_system);
+             fk::vector<float> const &x_orig, float const time,
+             solve_opts const solver, bool const update_system);
 
 } // namespace asgard::time_advance

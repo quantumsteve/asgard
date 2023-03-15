@@ -1,6 +1,7 @@
 #include "batch.hpp"
 #include "coefficients.cpp"
 #include "kronmult.hpp"
+#include "quadrature.hpp"
 #include "solver.hpp"
 #include "tests_general.hpp"
 
@@ -16,9 +17,19 @@ struct distribution_test_init
 static distribution_test_init const distrib_test_info;
 #endif
 
+parser get_parser(PDE_opts const pde_choice,
+                  fk::vector<int> const &starting_levels, int const degree,
+                  int const memory_limit)
+{
+  return parser(pde_choice, starting_levels, degree, parser::DEFAULT_CFL,
+                parser::DEFAULT_USE_FG, parser::DEFAULT_MAX_LEVEL,
+                parser::DEFAULT_TIME_STEPS, parser::DEFAULT_USE_IMPLICIT,
+                parser::DEFAULT_DO_ADAPT, parser::DEFAULT_ADAPT_THRESH,
+                parser::DEFAULT_SOLVER_STR, parser::DEFAULT_USE_IMEX,
+                memory_limit);
+}
 template<typename P>
-void test_kronmult(parser const &parse, int const workspace_size_MB,
-                   P const tol_factor)
+void test_kronmult(parser const &parse, P const tol_factor)
 {
   auto pde = make_PDE<P>(parse);
   options const opts(parse);
@@ -67,8 +78,8 @@ void test_kronmult(parser const &parse, int const workspace_size_MB,
     auto const system_size = elem_size * table.size();
     fk::matrix<P> A(system_size, system_size);
     fk::vector<P> x(gold);
-    int const restart  = A.ncols();
-    int const max_iter = A.ncols();
+    int const restart  = parser::DEFAULT_GMRES_INNER_ITERATIONS;
+    int const max_iter = parser::DEFAULT_GMRES_OUTER_ITERATIONS;
     P const tolerance  = std::is_same_v<float, P> ? 1e-6 : 1e-12;
     build_system_matrix(*pde, table, A, my_subgrid);
     // AA = I - dt*A;
@@ -84,15 +95,14 @@ void test_kronmult(parser const &parse, int const workspace_size_MB,
 
   // perform gmres with kron product
   fk::vector<P> const gmres_matrix_free = [&pde, &table, &my_subgrid, &gold, &b,
-                                           elem_size, &opts,
-                                           workspace_size_MB]() {
+                                           elem_size, &opts]() {
     auto const system_size = elem_size * table.size();
     fk::vector<P> x(gold);
     int const restart  = system_size;
     int const max_iter = system_size;
     P const tolerance  = std::is_same_v<float, P> ? 1e-6 : 1e-12;
-    solver::simple_gmres(*pde, table, opts, my_subgrid, workspace_size_MB, x, b,
-                         fk::matrix<P>(), restart, max_iter, tolerance);
+    solver::simple_gmres(*pde, table, opts, my_subgrid, x, b, fk::matrix<P>(),
+                         restart, max_iter, tolerance);
     return x;
   }();
 
@@ -180,51 +190,56 @@ TEMPLATE_TEST_CASE("test kronmult", "[kronmult]", float, double)
 
   SECTION("1d")
   {
-    auto const pde_choice = PDE_opts::continuity_1;
-    auto const degree     = 2;
-    auto const levels     = fk::vector<int>{3};
-    parser const test_parse(pde_choice, levels, degree);
+    auto const pde_choice        = PDE_opts::continuity_1;
+    auto const degree            = 2;
+    auto const levels            = fk::vector<int>{3};
     auto const workspace_size_MB = 1000;
-    test_kronmult(test_parse, workspace_size_MB, tol_factor);
+    parser const test_parse =
+        get_parser(pde_choice, levels, degree, workspace_size_MB);
+    test_kronmult(test_parse, tol_factor);
   }
 
   SECTION("2d - uniform level")
   {
-    auto const pde_choice = PDE_opts::continuity_2;
-    auto const degree     = 3;
-    auto const levels     = fk::vector<int>{2, 2};
-    parser const test_parse(pde_choice, levels, degree);
+    auto const pde_choice        = PDE_opts::continuity_2;
+    auto const degree            = 3;
+    auto const levels            = fk::vector<int>{2, 2};
     auto const workspace_size_MB = 1000;
-    test_kronmult(test_parse, workspace_size_MB, tol_factor);
+    parser const test_parse =
+        get_parser(pde_choice, levels, degree, workspace_size_MB);
+    test_kronmult(test_parse, tol_factor);
   }
   SECTION("2d - non-uniform level")
   {
-    auto const pde_choice = PDE_opts::continuity_2;
-    auto const degree     = 3;
-    auto const levels     = fk::vector<int>{3, 2};
-    parser const test_parse(pde_choice, levels, degree);
+    auto const pde_choice        = PDE_opts::continuity_2;
+    auto const degree            = 3;
+    auto const levels            = fk::vector<int>{3, 2};
     auto const workspace_size_MB = 1000;
-    test_kronmult(test_parse, workspace_size_MB, tol_factor);
+    parser const test_parse =
+        get_parser(pde_choice, levels, degree, workspace_size_MB);
+    test_kronmult(test_parse, tol_factor);
   }
 
   SECTION("6d - uniform level")
   {
-    auto const pde_choice = PDE_opts::continuity_6;
-    auto const degree     = 2;
-    auto const levels     = fk::vector<int>{2, 2, 2, 2, 2, 2};
-    parser const test_parse(pde_choice, levels, degree);
+    auto const pde_choice        = PDE_opts::continuity_6;
+    auto const degree            = 2;
+    auto const levels            = fk::vector<int>{2, 2, 2, 2, 2, 2};
     auto const workspace_size_MB = 1000;
-    test_kronmult(test_parse, workspace_size_MB, tol_factor);
+    parser const test_parse =
+        get_parser(pde_choice, levels, degree, workspace_size_MB);
+    test_kronmult(test_parse, tol_factor);
   }
 
   SECTION("6d - non-uniform level")
   {
-    auto const pde_choice = PDE_opts::continuity_6;
-    auto const degree     = 1;
-    auto const levels     = fk::vector<int>{2, 2, 2, 3, 2, 2};
-    parser const test_parse(pde_choice, levels, degree);
+    auto const pde_choice        = PDE_opts::continuity_6;
+    auto const degree            = 1;
+    auto const levels            = fk::vector<int>{2, 2, 2, 3, 2, 2};
     auto const workspace_size_MB = 1000;
-    test_kronmult(test_parse, workspace_size_MB, tol_factor);
+    parser const test_parse =
+        get_parser(pde_choice, levels, degree, workspace_size_MB);
+    test_kronmult(test_parse, tol_factor);
   }
 }
 
@@ -234,31 +249,99 @@ TEMPLATE_TEST_CASE("test kronmult w/ decompose", "[kronmult]", float, double)
 
   SECTION("2d - uniform level")
   {
-    auto const pde_choice = PDE_opts::continuity_2;
-    auto const degree     = 2;
-    auto const levels     = fk::vector<int>{6, 6};
-    parser const test_parse(pde_choice, levels, degree);
+    auto const pde_choice        = PDE_opts::continuity_2;
+    auto const degree            = 2;
+    auto const levels            = fk::vector<int>{6, 6};
     auto const workspace_size_MB = 80; // small enough to decompose the problem
-    test_kronmult(test_parse, workspace_size_MB, tol_factor);
+    parser const test_parse =
+        get_parser(pde_choice, levels, degree, workspace_size_MB);
+    test_kronmult(test_parse, tol_factor);
   }
 
   SECTION("2d - non-uniform level")
   {
-    auto const pde_choice = PDE_opts::continuity_2;
-    auto const degree     = 2;
-    auto const levels     = fk::vector<int>{6, 5};
-    parser const test_parse(pde_choice, levels, degree);
+    auto const pde_choice        = PDE_opts::continuity_2;
+    auto const degree            = 2;
+    auto const levels            = fk::vector<int>{6, 5};
     auto const workspace_size_MB = 80; // small enough to decompose the problem
-    test_kronmult(test_parse, workspace_size_MB, tol_factor);
+    parser const test_parse =
+        get_parser(pde_choice, levels, degree, workspace_size_MB);
+    test_kronmult(test_parse, tol_factor);
   }
 
   SECTION("6d - uniform level")
   {
-    auto const pde_choice = PDE_opts::continuity_6;
-    auto const degree     = 2;
-    auto const levels     = fk::vector<int>{2, 2, 2, 2, 2, 2};
-    parser const test_parse(pde_choice, levels, degree);
+    auto const pde_choice        = PDE_opts::continuity_6;
+    auto const degree            = 2;
+    auto const levels            = fk::vector<int>{2, 2, 2, 2, 2, 2};
     auto const workspace_size_MB = 80; // small enough to decompose the problem
-    test_kronmult(test_parse, workspace_size_MB, tol_factor);
+    parser const test_parse =
+        get_parser(pde_choice, levels, degree, workspace_size_MB);
+    test_kronmult(test_parse, tol_factor);
+  }
+}
+
+TEMPLATE_TEST_CASE("poisson setup and solve", "[solver]", float, double)
+{
+  SECTION("simple test case")
+  {
+    int const N_elements = 128;
+    int const N_nodes    = N_elements + 1;
+    int const degree     = 2;
+
+    TestType const x_min   = -2.0 * M_PI;
+    TestType const x_max   = 2.0 * M_PI;
+    TestType const phi_min = 0.0;
+    TestType const phi_max = 0.0;
+
+    int const N = (degree + 1) * N_elements;
+    fk::vector<TestType> poisson_source(N);
+    fk::vector<TestType> poisson_phi(N);
+    fk::vector<TestType> poisson_E(N);
+    fk::vector<TestType> x(N);
+    fk::vector<TestType> x_e(N_nodes);
+
+    fk::vector<TestType> diag;
+    fk::vector<TestType> off_diag;
+    solver::setup_poisson(N_elements, x_min, x_max, diag, off_diag);
+
+    // Assume Uniform Elements //
+    TestType dx = (x_max - x_min) / static_cast<TestType>(N_elements);
+
+    // Set Finite Element Nodes //
+    for (int i = 0; i < N_nodes; i++)
+    {
+      x_e[i] = x_min + i * dx;
+    }
+
+    // Set Source in DG Elements //
+    auto const lgwt = legendre_weights<TestType>(degree + 1, -1.0, 1.0, true);
+    for (int i = 0; i < N_elements; i++)
+    {
+      for (int q = 0; q < degree + 1; q++)
+      {
+        int k             = i * (degree + 1) + q;
+        TestType x_q      = lgwt[0][q];
+        x[k]              = x_e[i] + 0.5 * dx * (1.0 + x_q);
+        poisson_source[k] = 0.5 * (1.0 - 0.5 * std::cos(0.5 * x[k])) - 1.0;
+      }
+    }
+
+    solver::poisson_solver(poisson_source, diag, off_diag, poisson_phi,
+                           poisson_E, degree, N_elements, x_min, x_max, phi_min,
+                           phi_max, solver::poisson_bc::periodic);
+
+    TestType error = 0.0;
+    for (int i = 0; i < N_elements; i++)
+    {
+      for (int q = 0; q < degree + 1; q++)
+      {
+        int k = i * (degree + 1) + q;
+        error += std::pow(poisson_phi[k] + (1.0 + std::cos(0.5 * x[k])), 2);
+      }
+    }
+
+    error = std::sqrt(error) / ((degree + 1) * N_elements);
+    REQUIRE(error < 5.0e-5);
   }
 }

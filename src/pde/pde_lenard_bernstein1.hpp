@@ -69,7 +69,7 @@ private:
 
   inline static const partial_term<P> partial_term_0 =
       partial_term<P>(coefficient_type::div, g0,
-                      partial_term<P>::null_gfunc, flux_type::central,
+                      nullptr, flux_type::central,
                       boundary_condition::dirichlet, boundary_condition::dirichlet,
                       homogeneity::homogeneous, homogeneity::homogeneous);
 
@@ -90,7 +90,7 @@ private:
 
   inline static const partial_term<P> partial_term_1 =
       partial_term<P>(coefficient_type::div, g1,
-                      partial_term<P>::null_gfunc, flux_type::central,
+                      nullptr, flux_type::central,
                       boundary_condition::dirichlet, boundary_condition::dirichlet,
                       homogeneity::homogeneous, homogeneity::homogeneous);
 
@@ -110,13 +110,13 @@ private:
 
   inline static const partial_term<P> partial_term_2 =
       partial_term<P>(coefficient_type::div, g2,
-                      partial_term<P>::null_gfunc, flux_type::central,
+                      nullptr, flux_type::central,
                       boundary_condition::dirichlet, boundary_condition::dirichlet,
                       homogeneity::homogeneous, homogeneity::homogeneous);
 
   inline static const partial_term<P> partial_term_3 = partial_term<P>(
       coefficient_type::grad, g2,
-      partial_term<P>::null_gfunc, flux_type::central,
+      nullptr, flux_type::central,
       boundary_condition::dirichlet, boundary_condition::dirichlet,
       homogeneity::homogeneous, homogeneity::homogeneous);
 

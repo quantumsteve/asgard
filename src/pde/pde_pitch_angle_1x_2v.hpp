@@ -234,11 +234,11 @@ private:
   inline static partial_term<P> const partial_term_x_1_1 =
       partial_term<P>(
         coefficient_type::div, g_func_neg_1,
-        partial_term<P>::null_gfunc, flux_type::downwind, 
+        nullptr, flux_type::downwind,
         boundary_condition::periodic, boundary_condition::periodic,
         homogeneity::homogeneous, homogeneity::homogeneous,
-                      {}, partial_term<P>::null_scalar_func,
-                      {}, partial_term<P>::null_scalar_func,
+                      {}, nullptr,
+                      {}, nullptr,
                       dim0_dV);
 
   inline static term<P> const term1_x = term<P>(false,  // time-dependent
@@ -248,11 +248,11 @@ private:
   // mass in r
   inline static partial_term<P> const partial_term_r_1_1 = partial_term<P>(
       coefficient_type::mass, g_func_x, 
-      partial_term<P>::null_gfunc, flux_type::central,
+      nullptr, flux_type::central,
       boundary_condition::periodic, boundary_condition::periodic,
       homogeneity::homogeneous, homogeneity::homogeneous,
-                      {}, partial_term<P>::null_scalar_func,
-                      {}, partial_term<P>::null_scalar_func,
+                      {}, nullptr,
+                      {}, nullptr,
                       dim1_dV);
 
   inline static term<P> const term1_r = term<P>(false, // time-dependent
@@ -262,11 +262,11 @@ private:
   // mass in z with g(x) = z.*(z > 0)
   inline static partial_term<P> const partial_term_z_1_1 = partial_term<P>(
       coefficient_type::mass, g_func_x_pos, 
-      partial_term<P>::null_gfunc, flux_type::central,
+      nullptr, flux_type::central,
       boundary_condition::periodic, boundary_condition::periodic,
       homogeneity::homogeneous, homogeneity::homogeneous,
-                      {}, partial_term<P>::null_scalar_func,
-                      {}, partial_term<P>::null_scalar_func,
+                      {}, nullptr,
+                      {}, nullptr,
                       dim2_dV);
 
   inline static term<P> const term1_z = term<P>(false, // time-dependent
@@ -282,11 +282,11 @@ private:
   inline static partial_term<P> const partial_term_x_2_1 =
       partial_term<P>(
         coefficient_type::div, g_func_neg_1,
-        partial_term<P>::null_gfunc, flux_type::upwind, 
+        nullptr, flux_type::upwind, 
         boundary_condition::periodic, boundary_condition::periodic,
         homogeneity::homogeneous, homogeneity::homogeneous,
-                      {}, partial_term<P>::null_scalar_func,
-                      {}, partial_term<P>::null_scalar_func,
+                      {}, nullptr,
+                      {}, nullptr,
                       dim0_dV);
 
   inline static term<P> const term2_x = term<P>(false,  // time-dependent
@@ -299,11 +299,11 @@ private:
   // mass in z with g(z) = z.*(z < 0)
   inline static partial_term<P> const partial_term_z_2_1 = partial_term<P>(
       coefficient_type::mass, g_func_x_neg, 
-      partial_term<P>::null_gfunc, flux_type::central,
+      nullptr, flux_type::central,
       boundary_condition::periodic, boundary_condition::periodic,
       homogeneity::homogeneous, homogeneity::homogeneous,
-                      {}, partial_term<P>::null_scalar_func,
-                      {}, partial_term<P>::null_scalar_func,
+                      {}, nullptr,
+                      {}, nullptr,
                       dim2_dV);
 
   inline static term<P> const term2_z = term<P>(false, // time-dependent
@@ -318,11 +318,11 @@ private:
   // mass in x
   inline static partial_term<P> const partial_term_x_3_1 = partial_term<P>(
       coefficient_type::mass, g_func_const, 
-      partial_term<P>::null_gfunc, flux_type::central,
+      nullptr, flux_type::central,
       boundary_condition::periodic, boundary_condition::periodic,
       homogeneity::homogeneous, homogeneity::homogeneous,
-                      {}, partial_term<P>::null_scalar_func,
-                      {}, partial_term<P>::null_scalar_func,
+                      {}, nullptr,
+                      {}, nullptr,
                       dim0_dV);
 
   inline static term<P> const term3_x = term<P>(false, // time-dependent
@@ -332,11 +332,11 @@ private:
   // mass in r (differs from above because of surface jacobian)
   inline static partial_term<P> const partial_term_r_3_1 = partial_term<P>(
       coefficient_type::mass, g_func_identity, 
-      partial_term<P>::null_gfunc, flux_type::central,
+      nullptr, flux_type::central,
       boundary_condition::periodic, boundary_condition::periodic,
       homogeneity::homogeneous, homogeneity::homogeneous,
-                      {}, partial_term<P>::null_scalar_func,
-                      {}, partial_term<P>::null_scalar_func,
+                      {}, nullptr,
+                      {}, nullptr,
                       g_func_x);
 
   inline static term<P> const term3_r = term<P>(false, // time-dependent
@@ -346,20 +346,20 @@ private:
   // LDG in z
   inline static partial_term<P> const partial_term_z_3_1 =
       partial_term<P>(coefficient_type::div, g_func_identity,
-                      partial_term<P>::null_gfunc, flux_type::downwind, 
+                      nullptr, flux_type::downwind, 
                       boundary_condition::dirichlet, boundary_condition::dirichlet,
                       homogeneity::homogeneous, homogeneity::homogeneous,
-                      {}, partial_term<P>::null_scalar_func,
-                      {}, partial_term<P>::null_scalar_func,
+                      {}, nullptr,
+                      {}, nullptr,
                       g_func_sqrt_1mx2);
 
    inline static partial_term<P> const partial_term_z_3_2 =
       partial_term<P>(coefficient_type::grad, g_func_identity,
-                      partial_term<P>::null_gfunc, flux_type::upwind, 
+                      nullptr, flux_type::upwind, 
                       boundary_condition::neumann, boundary_condition::neumann,
                       homogeneity::homogeneous, homogeneity::homogeneous,
-                      {}, partial_term<P>::null_scalar_func,
-                      {}, partial_term<P>::null_scalar_func,
+                      {}, nullptr,
+                      {}, nullptr,
                       g_func_sqrt_1mx2);
 
   inline static term<P> const term3_z = term<P>(false,  // time-dependent

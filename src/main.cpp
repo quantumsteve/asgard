@@ -143,21 +143,6 @@ int main(int argc, char **argv)
 
   asgard::node_out() << "--- begin time loop staging ---" << '\n';
 
-  // Our default device workspace size is 10GB - 12 GB DRAM on TitanV
-  // - a couple GB for allocations not currently covered by the
-  // workspace limit (including working batch).
-
-  // This limit is only for the device workspace - the portion
-  // of our allocation that will be resident on an accelerator
-  // if the code is built for that.
-  //
-  // FIXME eventually going to be settable from the cmake
-  static auto const default_workspace_MB = 10000;
-
-  // FIXME currently used to check realspace transform only
-  /* RAM on fusiont5 */
-  static auto const default_workspace_cpu_MB = 187000;
-
 // -- setup realspace transform for file io or for plotting
 #if defined(ASGARD_IO_HIGHFIVE) || defined(ASGARD_USE_MATLAB)
 
@@ -179,13 +164,14 @@ int main(int argc, char **argv)
                                           asgard::resource::host>(
                            workspace, dense_size, dense_size * 2 - 1)};
   // transform initial condition to realspace
-  asgard::wavelet_to_realspace<prec>(
-      *pde, initial_condition, adaptive_grid.get_table(), transformer,
-      default_workspace_cpu_MB, tmp_workspace, real_space);
+  asgard::wavelet_to_realspace<prec>(*pde, initial_condition,
+                                     adaptive_grid.get_table(), transformer,
+                                     tmp_workspace, real_space);
 #endif
 
 #ifdef ASGARD_USE_MATLAB
-  asgard::ml::matlab_plot ml_plot;
+  using namespace asgard::ml;
+  auto &ml_plot = matlab_plot::get_instance();
   ml_plot.connect(cli_input.get_ml_session_string());
   asgard::node_out() << "  connected to MATLAB" << '\n';
 
@@ -193,15 +179,13 @@ int main(int argc, char **argv)
   if (pde->has_analytic_soln)
   {
     // generate the analytic solution at t=0
-    auto const subgrid_init = adaptive_grid.get_subgrid(asgard::get_rank());
-    auto const analytic_solution_init =
-        asgard::transform_and_combine_dimensions(
-            *pde, pde->exact_vector_funcs, adaptive_grid.get_table(),
-            transformer, subgrid_init.col_start, subgrid_init.col_stop, degree);
+    auto const analytic_solution_init = sum_separable_funcs(
+        pde->exact_vector_funcs, pde->get_dimensions(), adaptive_grid,
+        transformer, degree, static_cast<prec>(0.0));
     // transform analytic solution to realspace
     asgard::wavelet_to_realspace<prec>(
         *pde, analytic_solution_init, adaptive_grid.get_table(), transformer,
-        default_workspace_cpu_MB, tmp_workspace, analytic_solution_realspace);
+        tmp_workspace, analytic_solution_realspace);
   }
 
   // Add the matlab scripts directory to the matlab path
@@ -262,7 +246,7 @@ int main(int argc, char **argv)
     const std::string time_id = asgard::tools::timer.start(time_str);
     auto const sol            = asgard::time_advance::adaptive_advance(
         method, *pde, adaptive_grid, transformer, opts, f_val, time,
-        default_workspace_MB, update_system);
+        update_system);
     f_val.resize(sol.size()) = sol;
     asgard::tools::timer.stop(time_id);
 
@@ -270,11 +254,9 @@ int main(int argc, char **argv)
     if (pde->has_analytic_soln)
     {
       // get analytic solution at time(step+1)
-      auto const subgrid = adaptive_grid.get_subgrid(asgard::get_rank());
-      auto const time_multiplier   = pde->exact_time(time + pde->get_dt());
-      auto const analytic_solution = transform_and_combine_dimensions(
-          *pde, pde->exact_vector_funcs, adaptive_grid.get_table(), transformer,
-          subgrid.col_start, subgrid.col_stop, degree, time, time_multiplier);
+      auto const analytic_solution = sum_separable_funcs(
+          pde->exact_vector_funcs, pde->get_dimensions(), adaptive_grid,
+          transformer, degree, time + pde->get_dt());
 
       // calculate root mean squared error
       auto const diff = f_val - analytic_solution;
@@ -312,8 +294,7 @@ int main(int argc, char **argv)
         }
         asgard::wavelet_to_realspace<prec>(
             *pde, analytic_solution, adaptive_grid.get_table(), transformer,
-            default_workspace_cpu_MB, transform_wksp,
-            analytic_solution_realspace);
+            transform_wksp, analytic_solution_realspace);
       }
 #endif
     }
@@ -331,8 +312,8 @@ int main(int argc, char **argv)
       real_space.resize(dense_size);
 
       asgard::wavelet_to_realspace<prec>(*pde, f_val, adaptive_grid.get_table(),
-                                         transformer, default_workspace_cpu_MB,
-                                         transform_wksp, real_space);
+                                         transformer, transform_wksp,
+                                         real_space);
     }
 #endif
 
@@ -347,13 +328,13 @@ int main(int argc, char **argv)
       asgard::update_output_file(output_dataset_real, real_space,
                                  realspace_output_name);
     }
-#else
-    asgard::ignore(default_workspace_cpu_MB);
 #endif
 
 #ifdef ASGARD_USE_MATLAB
     if (opts.should_plot(i))
     {
+      ml_plot.push(std::string("rSpace_" + std::to_string(i)), real_space);
+
       ml_plot.plot_fval(*pde, adaptive_grid.get_table(), real_space,
                         analytic_solution_realspace);
 
@@ -427,6 +408,10 @@ int main(int argc, char **argv)
   }
 
   asgard::finalize_distribution();
+
+#ifdef ASGARD_USE_MATLAB
+  ml_plot.close();
+#endif
 
   return 0;
 }

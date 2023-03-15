@@ -1,5 +1,6 @@
 #pragma once
 
+#include "adapt.hpp"
 #include "asgard_dimension.hpp"
 #include "basis.hpp"
 #include "distribution.hpp"
@@ -46,7 +47,6 @@ void wavelet_to_realspace(
     PDE<P> const &pde, fk::vector<P> const &wave_space,
     elements::table const &table,
     basis::wavelet_transform<P, resource::host> const &transformer,
-    int const memory_limit_MB,
     std::array<fk::vector<P, mem_type::view, resource::host>, 2> &workspace,
     fk::vector<P> &real_space);
 
@@ -55,7 +55,6 @@ void wavelet_to_realspace(
     std::vector<dimension<P>> const &pde, fk::vector<P> const &wave_space,
     elements::table const &table,
     basis::wavelet_transform<P, resource::host> const &transformer,
-    int const memory_limit_MB,
     std::array<fk::vector<P, mem_type::view, resource::host>, 2> &workspace,
     fk::vector<P> &real_space);
 
@@ -64,7 +63,6 @@ void wavelet_to_realspace(
     std::vector<dimension_description<P>> const &pde,
     fk::vector<P> const &wave_space, elements::table const &table,
     basis::wavelet_transform<P, resource::host> const &transformer,
-    int const memory_limit_MB,
     std::array<fk::vector<P, mem_type::view, resource::host>, 2> &workspace,
     fk::vector<P> &real_space);
 
@@ -84,7 +82,7 @@ void combine_dimensions(int const degree, elements::table const &table,
 
 template<typename P, typename F>
 fk::vector<P> forward_transform(
-    dimension<P> const &dim, F function, g_func_type<P> const dv_func,
+    dimension<P> const &dim, F function, g_func_type<P> dv_func,
     basis::wavelet_transform<P, resource::host> const &transformer,
     P const t = 0)
 {
@@ -144,11 +142,14 @@ fk::vector<P> forward_transform(
     fk::vector<P> f_here = function(mapped_roots, t);
 
     // apply dv to f(v)
-    std::transform(f_here.begin(), f_here.end(), mapped_roots.begin(),
-                   f_here.begin(),
-                   [dv_func, t](P &f_elem, P const &x_elem) -> P {
-                     return f_elem * dv_func(x_elem, t);
-                   });
+    if (dv_func)
+    {
+      std::transform(f_here.begin(), f_here.end(), mapped_roots.begin(),
+                     f_here.begin(),
+                     [dv_func, t](P &f_elem, P const &x_elem) -> P {
+                       return f_elem * dv_func(x_elem, t);
+                     });
+    }
 
     // ensuring function returns vector of appropriate size
     expect(f_here.size() == weights.size());
@@ -177,6 +178,14 @@ fk::vector<P> forward_transform(
 
   return transformed;
 }
+
+template<typename P>
+fk::vector<P> sum_separable_funcs(
+    std::vector<md_func_type<P>> const &funcs,
+    std::vector<dimension<P>> const &dims,
+    adapt::distributed_grid<P> const &grid,
+    basis::wavelet_transform<P, resource::host> const &transformer,
+    int const degree, P const time);
 
 template<typename P>
 inline fk::vector<P> transform_and_combine_dimensions(

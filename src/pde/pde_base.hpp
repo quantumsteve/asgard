@@ -72,6 +72,7 @@ enum class coefficient_type
   grad,
   mass,
   div,
+  penalty
 };
 
 enum class flux_type
@@ -105,15 +106,6 @@ template<typename P>
 class partial_term
 {
 public:
-  static double null_gfunc(double const x, double const t)
-  {
-    ignore(x);
-    ignore(t);
-    return 1.0;
-  }
-
-  static P null_scalar_func(P const p) { return p; }
-
   static fk::vector<P> null_vector_func(fk::vector<P> x, P const t = 0)
   {
     ignore(t);
@@ -123,18 +115,18 @@ public:
   }
 
   partial_term(coefficient_type const coeff_type_in,
-               g_func_type<P> const g_func_in        = null_gfunc,
-               g_func_type<P> const lhs_mass_func_in = null_gfunc,
+               g_func_type<P> const g_func_in        = nullptr,
+               g_func_type<P> const lhs_mass_func_in = nullptr,
                flux_type const flux_in               = flux_type::central,
                boundary_condition const left_in  = boundary_condition::neumann,
                boundary_condition const right_in = boundary_condition::neumann,
                homogeneity const left_homo_in    = homogeneity::homogeneous,
                homogeneity const right_homo_in   = homogeneity::homogeneous,
-               std::vector<vector_func<P>> const left_bc_funcs_in = {},
-               scalar_func<P> const left_bc_time_func_in = null_scalar_func,
+               std::vector<vector_func<P>> const left_bc_funcs_in  = {},
+               scalar_func<P> const left_bc_time_func_in           = nullptr,
                std::vector<vector_func<P>> const right_bc_funcs_in = {},
-               scalar_func<P> const right_bc_time_func_in = null_scalar_func,
-               g_func_type<P> const dv_func_in            = null_gfunc)
+               scalar_func<P> const right_bc_time_func_in          = nullptr,
+               g_func_type<P> const dv_func_in                     = nullptr)
 
       : coeff_type(coeff_type_in), g_func(g_func_in),
         lhs_mass_func(lhs_mass_func_in), flux(set_flux(flux_in)), left(left_in),
@@ -205,10 +197,18 @@ public:
     coefficients_ = new_coefficients;
   }
 
+  void set_coefficients(std::vector<fk::matrix<P>> &&new_coefficients)
+  {
+    expect(new_coefficients.size() > 0);
+    coefficients_ = std::move(new_coefficients);
+  }
+
   void set_mass(fk::matrix<P> const &new_mass)
   {
     this->mass_.clear_and_resize(new_mass.nrows(), new_mass.ncols()) = new_mass;
   }
+
+  void set_mass(fk::matrix<P> &&new_mass) { this->mass_ = std::move(new_mass); }
 
   boundary_condition set_bilinear_boundary(boundary_condition const bc)
   {
@@ -250,14 +250,6 @@ private:
 template<typename P>
 class term
 {
-  static P g_func_default(P const x, P const time)
-  {
-    // suppress compiler warnings
-    ignore(x);
-    ignore(time);
-    return 1.0;
-  }
-
 public:
   term(bool const time_dependent_in, std::string const name_in,
        std::initializer_list<partial_term<P>> const partial_terms,
@@ -289,11 +281,26 @@ public:
     partial_terms_[pterm].set_coefficients(coeffs);
   }
 
+  void
+  set_partial_coefficients(std::vector<fk::matrix<P>> &&coeffs, int const pterm)
+  {
+    expect(pterm >= 0);
+    expect(pterm < static_cast<int>(partial_terms_.size()));
+    partial_terms_[pterm].set_coefficients(std::move(coeffs));
+  }
+
   void set_lhs_mass(fk::matrix<P> const &mass, int const pterm)
   {
     expect(pterm >= 0);
     expect(pterm < static_cast<int>(partial_terms_.size()));
     partial_terms_[pterm].set_mass(mass);
+  }
+
+  void set_lhs_mass(fk::matrix<P> &&mass, int const pterm)
+  {
+    expect(pterm >= 0);
+    expect(pterm < static_cast<int>(partial_terms_.size()));
+    partial_terms_[pterm].set_mass(std::move(mass));
   }
 
   fk::matrix<P, mem_type::owner, resource::device> const &
@@ -457,12 +464,29 @@ public:
       scalar_func<P> const exact_time_in, dt_func<P> const get_dt,
       bool const do_poisson_solve_in          = false,
       bool const has_analytic_soln_in         = false,
-      std::vector<moment<P>> const moments_in = {})
+      std::vector<moment<P>> const moments_in = {},
+      bool const do_collision_operator_in     = true)
+      : PDE(cli_input, num_dims_in, num_sources_in, max_num_terms, dimensions,
+            terms, sources_in,
+            std::vector<md_func_type<P>>({exact_vector_funcs_in}),
+            exact_time_in, get_dt, do_poisson_solve_in, has_analytic_soln_in,
+            moments_in, do_collision_operator_in)
+  {}
+  PDE(parser const &cli_input, int const num_dims_in, int const num_sources_in,
+      int const max_num_terms, std::vector<dimension<P>> const dimensions,
+      term_set<P> const terms, std::vector<source<P>> const sources_in,
+      std::vector<md_func_type<P>> const exact_vector_funcs_in,
+      scalar_func<P> const exact_time_in, dt_func<P> const get_dt,
+      bool const do_poisson_solve_in          = false,
+      bool const has_analytic_soln_in         = false,
+      std::vector<moment<P>> const moments_in = {},
+      bool const do_collision_operator_in     = true)
       : num_dims(num_dims_in), num_sources(num_sources_in),
         num_terms(get_num_terms(cli_input, max_num_terms)),
         max_level(get_max_level(cli_input, dimensions)), sources(sources_in),
         exact_vector_funcs(exact_vector_funcs_in), moments(moments_in),
         exact_time(exact_time_in), do_poisson_solve(do_poisson_solve_in),
+        do_collision_operator(do_collision_operator_in),
         has_analytic_soln(has_analytic_soln_in), dimensions_(dimensions),
         terms_(terms)
   {
@@ -477,7 +501,11 @@ public:
     // ensure analytic solution functions were provided if this flag is set
     if (has_analytic_soln)
     {
-      expect(exact_vector_funcs.size() == static_cast<unsigned>(num_dims));
+      // each set of analytical solution functions must have num_dim functions
+      for (const auto &md_func : exact_vector_funcs)
+      {
+        expect(md_func.size() == static_cast<unsigned>(num_dims));
+      }
     }
 
     // modify for appropriate level/degree
@@ -621,6 +649,7 @@ public:
         sources(pde.sources), exact_vector_funcs(pde.exact_vector_funcs),
         moments(pde.moments), exact_time(pde.exact_time),
         do_poisson_solve(pde.do_poisson_solve),
+        do_collision_operator(pde.do_collision_operator),
         has_analytic_soln(pde.has_analytic_soln),
         dimensions_({pde.get_dimensions()[0]}), terms_(pde.get_terms())
   {}
@@ -632,11 +661,15 @@ public:
   int const max_level;
 
   std::vector<source<P>> const sources;
-  std::vector<vector_func<P>> const exact_vector_funcs;
+  std::vector<md_func_type<P>> const exact_vector_funcs;
   std::vector<moment<P>> moments;
   scalar_func<P> const exact_time;
   bool const do_poisson_solve;
+  bool const do_collision_operator;
   bool const has_analytic_soln;
+  // data for poisson solver
+  fk::vector<P> poisson_diag;
+  fk::vector<P> poisson_off_diag;
 
   virtual ~PDE() {}
 
@@ -700,6 +733,16 @@ public:
     expect(dim >= 0);
     expect(dim < num_dims);
     terms_[term][dim].set_lhs_mass(mass, pterm);
+  }
+
+  void set_lhs_mass(int const term, int const dim, int const pterm,
+                    fk::matrix<P> &&mass)
+  {
+    expect(term >= 0);
+    expect(term < num_terms);
+    expect(dim >= 0);
+    expect(dim < num_dims);
+    terms_[term][dim].set_lhs_mass(mass, std::move(pterm));
   }
 
   void update_dimension(int const dim_index, int const new_level)

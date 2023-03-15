@@ -1,7 +1,11 @@
 #include "solver.hpp"
+#include "distribution.hpp"
 #include "fast_math.hpp"
 #include "kronmult.hpp"
+#include "quadrature.hpp"
 #include "tools.hpp"
+#include <algorithm>
+#include <stdexcept>
 
 namespace asgard::solver
 {
@@ -54,27 +58,57 @@ P simple_gmres(fk::matrix<P> const &A, fk::vector<P> &x, fk::vector<P> const &b,
                fk::matrix<P> const &M, int const restart, int const max_iter,
                P const tolerance)
 {
-  return simple_gmres(dense_matrix{A}, x, b, M, restart, max_iter, tolerance);
+  auto dense_matrix_wrapper = [&A](fk::vector<P> const &x_in, fk::vector<P> &y,
+                                   P const alpha = 1.0, P const beta = 0.0) {
+    bool const trans_A = false;
+    fm::gemv(A, x_in, y, trans_A, alpha, beta);
+  };
+  return simple_gmres(dense_matrix_wrapper, x, b, M, restart, max_iter,
+                      tolerance);
 }
 
 template<typename P>
 P simple_gmres(PDE<P> const &pde, elements::table const &elem_table,
                options const &program_options,
-               element_subgrid const &my_subgrid, int const workspace_size_MB,
-               fk::vector<P> &x, fk::vector<P> const &b, fk::matrix<P> const &M,
-               int const restart, int const max_iter, P const tolerance)
+               element_subgrid const &my_subgrid, fk::vector<P> &x,
+               fk::vector<P> const &b, fk::matrix<P> const &M,
+               int const restart, int const max_iter, P const tolerance,
+               imex_flag const imex)
 {
-  return simple_gmres(matrix_free{pde, elem_table, program_options, my_subgrid,
-                                  workspace_size_MB},
-                      x, b, M, restart, max_iter, tolerance);
+  auto euler_operator = [&pde, &elem_table, &program_options, &my_subgrid,
+                         imex](fk::vector<P> const &x_in, fk::vector<P> &y,
+                               P const alpha = 1.0, P const beta = 0.0) {
+    auto tmp = kronmult::execute(pde, elem_table, program_options, my_subgrid,
+                                 x_in, imex);
+    tmp      = x_in - tmp * pde.get_dt();
+    y        = tmp * alpha + y * beta;
+  };
+  return simple_gmres(euler_operator, x, b, M, restart, max_iter, tolerance);
+}
+
+/*! Generates a default number inner iterations when no use input is given
+ * \param num_cols Number of columns in the A matrix.
+ * \returns default number of iterations before restart
+ */
+template<typename P>
+static int default_gmres_restarts(int num_cols)
+{
+  // at least 10 iterations before restart but not more than num_cols
+  int minimum = std::min(10, num_cols);
+  // No more than 200 iterations before restart but not more than num_cols
+  int maximum = std::min(200, num_cols);
+  // Don't go over 512 MB.
+  return std::clamp(static_cast<int>(512. / get_MB<P>(num_cols)), minimum,
+                    maximum);
 }
 
 // simple, node-local test version
 template<typename P, typename matrix_replacement>
 P simple_gmres(matrix_replacement mat, fk::vector<P> &x, fk::vector<P> const &b,
-               fk::matrix<P> const &M, int const restart, int const max_iter,
-               P const tolerance)
+               fk::matrix<P> const &M, int restart, int max_iter, P tolerance)
 {
+  if (tolerance == parser::NO_USER_VALUE_FP)
+    tolerance = std::is_same_v<float, P> ? 1e-6 : 1e-12;
   expect(tolerance >= std::numeric_limits<P>::epsilon());
   int const n = b.size();
   expect(n == x.size());
@@ -89,11 +123,32 @@ P simple_gmres(matrix_replacement mat, fk::vector<P> &x, fk::vector<P> const &b,
   fk::matrix<P> precond(M);
   bool precond_factored = false;
 
-  expect(restart > 0);
-  expect(restart <= n);
-  expect(max_iter >= restart);
-  expect(max_iter <= n);
-
+  if (restart == parser::NO_USER_VALUE)
+    restart = default_gmres_restarts<P>(n);
+  expect(restart > 0); // checked in program_options
+  if (restart > n)
+  {
+    std::ostringstream err_msg;
+    err_msg << "Number of inner iterations " << restart << " must be less than "
+            << n << "!";
+    throw std::invalid_argument(err_msg.str());
+  }
+  if (max_iter == parser::NO_USER_VALUE)
+    max_iter = n;
+  if (max_iter < restart)
+  {
+    std::ostringstream err_msg;
+    err_msg << "Number of outer iterations " << max_iter
+            << " must be greater than " << restart << "!";
+    throw std::invalid_argument(err_msg.str());
+  }
+  if (max_iter > n)
+  {
+    std::ostringstream err_msg;
+    err_msg << "Number of outer iterations " << max_iter
+            << " must be less than " << n << "!";
+    throw std::invalid_argument(err_msg.str());
+  }
   P const norm_b = [&b]() {
     P const norm = fm::nrm2(b);
     return (norm == 0.0) ? static_cast<P>(1.0) : norm;
@@ -226,6 +281,124 @@ P simple_gmres(matrix_replacement mat, fk::vector<P> &x, fk::vector<P> const &b,
   return error;
 }
 
+template<typename P>
+void setup_poisson(const int N_elements, P const x_min, P const x_max,
+                   fk::vector<P> &diag, fk::vector<P> &off_diag)
+{
+  // sets up and factorizes the matrix to use in the poisson solver
+  const P dx = (x_max - x_min) / static_cast<P>(N_elements);
+
+  const int N_nodes = N_elements - 1;
+
+  diag.resize(N_nodes);
+  off_diag.resize(N_nodes - 1);
+
+  for (int i = 0; i < N_nodes; ++i)
+  {
+    diag[i] = 2.0 / dx;
+  }
+
+  for (int i = 0; i < N_nodes - 1; ++i)
+  {
+    off_diag[i] = -1.0 / dx;
+  }
+
+  fm::pttrf(diag, off_diag);
+}
+
+template<typename P>
+void poisson_solver(fk::vector<P> const &source, fk::vector<P> const &A_D,
+                    fk::vector<P> const &A_E, fk::vector<P> &phi,
+                    fk::vector<P> &E, int const degree, int const N_elements,
+                    P const x_min, P const x_max, P const phi_min,
+                    P const phi_max, poisson_bc const bc)
+{
+  // Solving: - phi_xx = source Using Linear Finite Elements
+  // Boundary Conditions: phi(x_min)=phi_min and phi(x_max)=phi_max
+  // Returns phi and E = - Phi_x in Gauss-Legendre Nodes
+
+  P const dx = (x_max - x_min) / static_cast<P>(N_elements);
+
+  auto const lgwt = legendre_weights<P>(degree + 1, -1.0, 1.0, true);
+
+  int N_nodes = N_elements - 1;
+
+  // Average the Source Vector (if Periodic) //
+  double ave_source = 0.0;
+  if (bc == poisson_bc::periodic)
+  {
+    for (int i = 0; i < N_elements; i++)
+    {
+      for (int q = 0; q < degree + 1; q++)
+      {
+        ave_source += 0.5 * dx * lgwt[1][q] * source[i * (degree + 1) + q];
+      }
+    }
+    ave_source /= (x_max - x_min);
+  }
+
+  // Set the Source Vector //
+  fk::vector<P> b(N_nodes);
+  for (int i = 0; i < N_nodes; i++)
+  {
+    b[i] = 0.0;
+    for (int q = 0; q < degree + 1; q++)
+    {
+      b[i] += 0.25 * dx * lgwt[1][q] *
+              (source[(i) * (degree + 1) + q] * (1.0 + lgwt[0][q]) +
+               source[(i + 1) * (degree + 1) + q] * (1.0 - lgwt[0][q]) -
+               2.0 * ave_source);
+    }
+  }
+
+  // Linear Solve //
+  fm::pttrs(A_D, A_E, b);
+
+  // Set Potential and Electric Field in DG Nodes //
+  P const dg = (phi_max - phi_min) / (x_max - x_min);
+
+  // First Element //
+  for (int k = 0; k < degree + 1; k++)
+  {
+    P const x_k = x_min + 0.5 * dx * (1.0 + lgwt[0][k]);
+    P const g_k = phi_min + dg * (x_k - x_min);
+
+    phi[k] = 0.5 * b[0] * (1.0 + lgwt[0][k]) + g_k;
+
+    E[k] = -b[0] / dx - dg;
+  }
+
+  // Interior Elements //
+  for (int i = 1; i < N_elements - 1; i++)
+  {
+    for (int q = 0; q < degree + 1; q++)
+    {
+      int const k = i * (degree + 1) + q;
+      P const x_k = (x_min + i * dx) + 0.5 * dx * (1.0 + lgwt[0][q]);
+      P const g_k = phi_min + dg * (x_k - x_min);
+
+      phi[k] =
+          0.5 * (b[i - 1] * (1.0 - lgwt[0][q]) + b[i] * (1.0 + lgwt[0][q])) +
+          g_k;
+
+      E[k] = -(b[i] - b[i - 1]) / dx - dg;
+    }
+  }
+
+  // Last Element //
+  int const i = N_elements - 1;
+  for (int q = 0; q < degree + 1; q++)
+  {
+    int const k = i * (degree + 1) + q;
+    P const x_k = (x_min + i * dx) + 0.5 * dx * (1.0 + lgwt[0][q]);
+    P const g_k = phi_min + dg * (x_k - x_min);
+
+    phi[k] = 0.5 * b[i - 1] * (1.0 - lgwt[0][q]) + g_k;
+
+    E[k] = b[i - 1] / dx - dg;
+  }
+}
+
 template float simple_gmres(fk::matrix<float> const &A, fk::vector<float> &x,
                             fk::vector<float> const &b,
                             fk::matrix<float> const &M, int const restart,
@@ -239,15 +412,35 @@ template double simple_gmres(fk::matrix<double> const &A, fk::vector<double> &x,
 template float
 simple_gmres(PDE<float> const &pde, elements::table const &elem_table,
              options const &program_options, element_subgrid const &my_subgrid,
-             int const workspace_size_MB, fk::vector<float> &x,
-             fk::vector<float> const &b, fk::matrix<float> const &M,
-             int const restart, int const max_iter, float const tolerance);
+             fk::vector<float> &x, fk::vector<float> const &b,
+             fk::matrix<float> const &M, int const restart, int const max_iter,
+             float const tolerance, imex_flag const imex);
 
 template double
 simple_gmres(PDE<double> const &pde, elements::table const &elem_table,
              options const &program_options, element_subgrid const &my_subgrid,
-             int const workspace_size_MB, fk::vector<double> &x,
-             fk::vector<double> const &b, fk::matrix<double> const &M,
-             int const restart, int const max_iter, double const tolerance);
+             fk::vector<double> &x, fk::vector<double> const &b,
+             fk::matrix<double> const &M, int const restart, int const max_iter,
+             double const tolerance, imex_flag const imex);
+
+template void setup_poisson(const int N_elements, float const x_min,
+                            float const x_max, fk::vector<float> &diag,
+                            fk::vector<float> &off_diag);
+template void setup_poisson(const int N_elements, double const x_min,
+                            double const x_max, fk::vector<double> &diag,
+                            fk::vector<double> &off_diag);
+
+template void
+poisson_solver(fk::vector<float> const &source, fk::vector<float> const &A_D,
+               fk::vector<float> const &A_E, fk::vector<float> &phi,
+               fk::vector<float> &E, int const degree, int const N_elements,
+               float const x_min, float const x_max, float const phi_min,
+               float const phi_max, poisson_bc const bc);
+template void
+poisson_solver(fk::vector<double> const &source, fk::vector<double> const &A_D,
+               fk::vector<double> const &A_E, fk::vector<double> &phi,
+               fk::vector<double> &E, int const degree, int const N_elements,
+               double const x_min, double const x_max, double const phi_min,
+               double const phi_max, poisson_bc const bc);
 
 } // namespace asgard::solver

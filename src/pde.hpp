@@ -27,6 +27,7 @@
 #include "pde/pde_fokkerplanck1_pitch_C.hpp"
 #include "pde/pde_fokkerplanck1_pitch_E.hpp"
 #include "pde/pde_fokkerplanck2_complete.hpp"
+#include "pde/pde_two_stream.hpp"
 #include "pde/pde_vlasov_lb_full_f.hpp"
 #include "pde/pde_pitch_angle_1x_2v.hpp"
 #include "pde/pde_lenard_bernstein1.hpp"
@@ -102,6 +103,8 @@ std::unique_ptr<PDE<P>> make_PDE(parser const &cli_input)
     return std::make_unique<PDE_lenard_bernstein_1d<P>>(cli_input);
   case PDE_opts::lenard_bernstein_3:
     return std::make_unique<PDE_lenard_bernstein_3d<P>>(cli_input);
+  case PDE_opts::vlasov_two_stream:
+    return std::make_unique<PDE_vlasov_two_stream<P>>(cli_input);
   default:
     std::cout << "Invalid pde choice" << std::endl;
     exit(-1);
@@ -188,7 +191,6 @@ make_PDE(PDE_opts const pde_choice, int const level = parser::NO_USER_VALUE,
 
     case PDE_opts::vlasov_lb_full_f:
       return fk::vector<int>(std::vector<int>(2, level));
-
     case PDE_opts::pitch_angle_1x_2v:
       return fk::vector<int>(std::vector<int>(3, level));
 
@@ -197,7 +199,8 @@ make_PDE(PDE_opts const pde_choice, int const level = parser::NO_USER_VALUE,
 
     case PDE_opts::lenard_bernstein_3:
       return fk::vector<int>(std::vector<int>(3, level));
-
+    case PDE_opts::vlasov_two_stream:
+      return fk::vector<int>(std::vector<int>(2, level));
     default:
       std::cout << "Invalid pde choice" << std::endl;
       exit(-1);
