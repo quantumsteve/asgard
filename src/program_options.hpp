@@ -153,13 +153,18 @@ static pde_map_t const pde_mapping = {
     {"vlasov", PDE_descriptor("Vlasov lb full f. df/dt == -v*grad_x f + div_v( "
                               "(v-u)f + theta*grad_v f)",
                               PDE_opts::vlasov_lb_full_f)},
-    {"pitch_angle_1x_2v", PDE_descriptor("Pitch angle scattering. df/dt == -v_||*grad_x f + div_v( "
-                              "f + C(f)",
-                              PDE_opts::pitch_angle_1x_2v)},
-    {"lenard_bernstein_1", PDE_descriptor("Lenard Bernstein in 1D: df/dt = nu*div((v-u)f + th*grad f)",
-                              PDE_opts::lenard_bernstein_1)},
-    {"lenard_bernstein_3", PDE_descriptor("Lenard Bernstein in 3D: df/dt = nu*div((v-u)f + th*grad f)",
-                              PDE_opts::lenard_bernstein_3)},                          
+    {"pitch_angle_1x_2v",
+     PDE_descriptor("Pitch angle scattering. df/dt == -v_||*grad_x f + div_v( "
+                    "f + C(f)",
+                    PDE_opts::pitch_angle_1x_2v)},
+    {"lenard_bernstein_1",
+     PDE_descriptor(
+         "Lenard Bernstein in 1D: df/dt = nu*div((v-u)f + th*grad f)",
+         PDE_opts::lenard_bernstein_1)},
+    {"lenard_bernstein_3",
+     PDE_descriptor(
+         "Lenard Bernstein in 3D: df/dt = nu*div((v-u)f + th*grad f)",
+         PDE_opts::lenard_bernstein_3)},
     {"two_stream",
      PDE_descriptor("Vlasov two-stream. df/dt == -v*grad_x f -E*grad_v f",
                     PDE_opts::vlasov_two_stream)}};

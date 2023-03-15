@@ -43,28 +43,30 @@ private:
   static bool constexpr do_poisson_solve_  = false;
   static bool constexpr has_analytic_soln_ = true;
 
-  static P constexpr nu = 1.0e3;
-  static P constexpr u_x = 1.0;
-  static P constexpr u_y = 1.0;
-  static P constexpr u_z = 1.0;
-  static P constexpr th = 1.0;
-  static P constexpr prefactor = 1.0/std::sqrt(2.0*M_PI);
+  static P constexpr nu        = 1.0e3;
+  static P constexpr u_x       = 1.0;
+  static P constexpr u_y       = 1.0;
+  static P constexpr u_z       = 1.0;
+  static P constexpr th        = 1.0;
+  static P constexpr prefactor = 1.0 / std::sqrt(2.0 * M_PI);
 
   // specify exact solution vectors/time function...
   static fk::vector<P> exact_solution_dim0(fk::vector<P> const x, P const t = 0)
   {
     ignore(t);
     fk::vector<P> fx(x.size());
-    std::transform(x.begin(), x.end(), fx.begin(),
-                   [](P const &x_v) { return prefactor* std::exp(-1. * std::pow(x_v -1., 2)/(2.0*th)); });
-		    return fx;
+    std::transform(x.begin(), x.end(), fx.begin(), [](P const &x_v) {
+      return prefactor * std::exp(-1. * std::pow(x_v - 1., 2) / (2.0 * th));
+    });
+    return fx;
   }
   static fk::vector<P> exact_solution_dim1(fk::vector<P> const x, P const t = 0)
   {
     ignore(t);
     fk::vector<P> fx(x.size());
-    std::transform(x.begin(), x.end(), fx.begin(),
-                  [](P const &x_v) { return prefactor*std::exp(-1. * std::pow(x_v -1., 2)/(2.0*th)); });
+    std::transform(x.begin(), x.end(), fx.begin(), [](P const &x_v) {
+      return prefactor * std::exp(-1. * std::pow(x_v - 1., 2) / (2.0 * th));
+    });
     return fx;
   }
 
@@ -72,8 +74,9 @@ private:
   {
     ignore(t);
     fk::vector<P> fx(x.size());
-    std::transform(x.begin(), x.end(), fx.begin(),
-                  [](P const &x_v) { return prefactor*std::exp(-1. * std::pow(x_v -1., 2)/(2.0*th)); });
+    std::transform(x.begin(), x.end(), fx.begin(), [](P const &x_v) {
+      return prefactor * std::exp(-1. * std::pow(x_v - 1., 2) / (2.0 * th));
+    });
     return fx;
   }
 
@@ -91,8 +94,12 @@ private:
     ignore(t);
     fk::vector<P> fx(x.size());
     std::transform(x.begin(), x.end(), fx.begin(),
-//                   [](P const &x_v) { return std::exp(-x_v*x_v/(2.0*th)); });
-                   [](P const &x_v) { ignore(x_v); return 1.0/12.0; });
+                   //                   [](P const &x_v) { return
+                   //                   std::exp(-x_v*x_v/(2.0*th)); });
+                   [](P const &x_v) {
+                     ignore(x_v);
+                     return 1.0 / 12.0;
+                   });
     return fx;
   }
   static fk::vector<P>
@@ -101,8 +108,12 @@ private:
     ignore(t);
     fk::vector<P> fx(x.size());
     std::transform(x.begin(), x.end(), fx.begin(),
-//                   [](P const &x_v) { return std::exp(-x_v*x_v/(2.0*th)); });
-                   [](P const &x_v) { ignore(x_v); return 1.0/12.0; });
+                   //                   [](P const &x_v) { return
+                   //                   std::exp(-x_v*x_v/(2.0*th)); });
+                   [](P const &x_v) {
+                     ignore(x_v);
+                     return 1.0 / 12.0;
+                   });
     return fx;
   }
   static fk::vector<P>
@@ -111,8 +122,12 @@ private:
     ignore(t);
     fk::vector<P> fx(x.size());
     std::transform(x.begin(), x.end(), fx.begin(),
-//                   [](P const &x_v) { return std::exp(-x_v*x_v/(2.0*th)); });
-                   [](P const &x_v) { ignore(x_v); return 1.0/12.0; });
+                   //                   [](P const &x_v) { return
+                   //                   std::exp(-x_v*x_v/(2.0*th)); });
+                   [](P const &x_v) {
+                     ignore(x_v);
+                     return 1.0 / 12.0;
+                   });
     return fx;
   }
 
@@ -204,13 +219,12 @@ private:
                                            {partial_term_I_});
 
   // sd mass_matrix (nu f,g)
-  inline static partial_term<P> const partial_term_nu_ =
-      partial_term<P>(coefficient_type::mass, g_func_nu, g_func_identity,
-                      flux_type::central, boundary_condition::periodic,
-                      boundary_condition::periodic);
+  inline static partial_term<P> const partial_term_nu_ = partial_term<P>(
+      coefficient_type::mass, g_func_nu, g_func_identity, flux_type::central,
+      boundary_condition::periodic, boundary_condition::periodic);
   inline static term<P> const nu_ = term<P>(false,  // time-dependent
-                                           "mass", // name
-                                           {partial_term_nu_});
+                                            "mass", // name
+                                            {partial_term_nu_});
 
   // sd_term d_v(vf)
   static P g_func_v(P const x, P const time)
@@ -223,9 +237,9 @@ private:
       coefficient_type::div, g_func_v, g_func_identity, flux_type::central,
       boundary_condition::dirichlet, boundary_condition::dirichlet,
       homogeneity::homogeneous, homogeneity::homogeneous);
-  inline static term<P> const term_dvvf_ = term<P>(false, // time-dependent
-                                                    "d_v(vf)", // name
-                                                    {partial_term_dvvf_});
+  inline static term<P> const term_dvvf_ = term<P>(false,     // time-dependent
+                                                   "d_v(vf)", // name
+                                                   {partial_term_dvvf_});
 
   /*  div(vf)  */
 
@@ -238,7 +252,6 @@ private:
   // term 2 -- d_z(zf)
   inline static std::vector<term<P>> const terms2_ = {I_, nu_, term_dvvf_};
 
-
   /*  div(-uf) where u=(u_x,u_y,u_z) */
 
   // sd term d_x(-u_xf)
@@ -249,14 +262,13 @@ private:
     ignore(time);
     return -u_x;
   }
-  inline static partial_term<P> const partial_term_u_x_ =
-      partial_term<P>(coefficient_type::div, g_func_u_x, g_func_identity,
-                      flux_type::central,
-                      boundary_condition::dirichlet, boundary_condition::dirichlet,
-                      homogeneity::homogeneous, homogeneity::homogeneous);
-  inline static term<P> const term_u_x_ = term<P>(false,  // time-dependent
-                                           "u_x", // name
-                                           {partial_term_u_x_});
+  inline static partial_term<P> const partial_term_u_x_ = partial_term<P>(
+      coefficient_type::div, g_func_u_x, g_func_identity, flux_type::central,
+      boundary_condition::dirichlet, boundary_condition::dirichlet,
+      homogeneity::homogeneous, homogeneity::homogeneous);
+  inline static term<P> const term_u_x_ = term<P>(false, // time-dependent
+                                                  "u_x", // name
+                                                  {partial_term_u_x_});
 
   // term 3 -- d_x(-u_xf)
   inline static std::vector<term<P>> const terms3_ = {term_u_x_, I_, nu_};
@@ -269,14 +281,13 @@ private:
     ignore(time);
     return -u_y;
   }
-  inline static partial_term<P> const partial_term_u_y_ =
-      partial_term<P>(coefficient_type::div, g_func_u_y, g_func_identity,
-                      flux_type::central,
-                      boundary_condition::dirichlet, boundary_condition::dirichlet,
-                      homogeneity::homogeneous, homogeneity::homogeneous);
-  inline static term<P> const term_u_y_ = term<P>(false,  // time-dependent
-                                           "u_y", // name
-                                           {partial_term_u_y_});
+  inline static partial_term<P> const partial_term_u_y_ = partial_term<P>(
+      coefficient_type::div, g_func_u_y, g_func_identity, flux_type::central,
+      boundary_condition::dirichlet, boundary_condition::dirichlet,
+      homogeneity::homogeneous, homogeneity::homogeneous);
+  inline static term<P> const term_u_y_ = term<P>(false, // time-dependent
+                                                  "u_y", // name
+                                                  {partial_term_u_y_});
 
   // term 4 -- d_y(-u_yf)
   inline static std::vector<term<P>> const terms4_ = {nu_, term_u_y_, I_};
@@ -289,14 +300,13 @@ private:
     ignore(time);
     return -u_z;
   }
-  inline static partial_term<P> const partial_term_u_z_ =
-      partial_term<P>(coefficient_type::div, g_func_u_z, g_func_identity,
-                      flux_type::central,
-                      boundary_condition::dirichlet, boundary_condition::dirichlet,
-                      homogeneity::homogeneous, homogeneity::homogeneous);
-  inline static term<P> const term_u_z_ = term<P>(false,  // time-dependent
-                                           "u_z", // name
-                                           {partial_term_u_z_});
+  inline static partial_term<P> const partial_term_u_z_ = partial_term<P>(
+      coefficient_type::div, g_func_u_z, g_func_identity, flux_type::central,
+      boundary_condition::dirichlet, boundary_condition::dirichlet,
+      homogeneity::homogeneous, homogeneity::homogeneous);
+  inline static term<P> const term_u_z_ = term<P>(false, // time-dependent
+                                                  "u_z", // name
+                                                  {partial_term_u_z_});
 
   // term 5 -- d_z(-u_zf)
   inline static std::vector<term<P>> const terms5_ = {I_, nu_, term_u_z_};
@@ -313,17 +323,18 @@ private:
   }
   inline static partial_term<P> const partial_term_div_th =
       partial_term<P>(coefficient_type::div, g_func_sqrt_th, g_func_identity,
-                      flux_type::central,
-                      boundary_condition::dirichlet, boundary_condition::dirichlet,
-                      homogeneity::homogeneous, homogeneity::homogeneous);
+                      flux_type::central, boundary_condition::dirichlet,
+                      boundary_condition::dirichlet, homogeneity::homogeneous,
+                      homogeneity::homogeneous);
   inline static partial_term<P> const partial_term_grad_th =
       partial_term<P>(coefficient_type::grad, g_func_sqrt_th, g_func_identity,
-                      flux_type::central,
-                      boundary_condition::dirichlet, boundary_condition::dirichlet,
-                      homogeneity::homogeneous, homogeneity::homogeneous);
-  inline static term<P> const term_diff_th_ = term<P>(false,  // time-dependent
-                                           "grad", // name
-                                           {partial_term_div_th,partial_term_grad_th});
+                      flux_type::central, boundary_condition::dirichlet,
+                      boundary_condition::dirichlet, homogeneity::homogeneous,
+                      homogeneity::homogeneous);
+  inline static term<P> const term_diff_th_ =
+      term<P>(false,  // time-dependent
+              "grad", // name
+              {partial_term_div_th, partial_term_grad_th});
 
   // term 6 -- d_xx(th f)
   inline static std::vector<term<P>> const terms6_ = {term_diff_th_, I_, nu_};
@@ -334,14 +345,14 @@ private:
   // term 8 -- d_zz(th f)
   inline static std::vector<term<P>> const terms8_ = {I_, nu_, term_diff_th_};
 
-
   // Collect terms
   inline static term_set<P> const terms_ = {terms0_, terms1_, terms2_,
                                             terms3_, terms4_, terms5_,
                                             terms6_, terms7_, terms8_};
 
-  inline static std::vector<source<P>> const sources_ = {};
-  inline static std::vector<vector_func<P>> const exact_vector_funcs_ = {exact_solution_dim0,exact_solution_dim1,exact_solution_dim2};
+  inline static std::vector<source<P>> const sources_                 = {};
+  inline static std::vector<vector_func<P>> const exact_vector_funcs_ = {
+      exact_solution_dim0, exact_solution_dim1, exact_solution_dim2};
   inline static scalar_func<P> const exact_scalar_func_ = exact_time;
 };
 } // namespace asgard

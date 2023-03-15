@@ -29,7 +29,7 @@ private:
   static bool constexpr has_analytic_soln_ = false;
 
   static P constexpr nu = 1.0e3;
-  static P constexpr  u = 1.0;
+  static P constexpr u  = 1.0;
   static P constexpr th = 1.0;
 
   static fk::vector<P>
@@ -37,8 +37,9 @@ private:
   {
     ignore(t);
     fk::vector<P> fx(x.size());
-    std::transform(x.begin(), x.end(), fx.begin(),
-                   [](P const &x_v) { return std::exp(-x_v*x_v/(2.0*th)); });
+    std::transform(x.begin(), x.end(), fx.begin(), [](P const &x_v) {
+      return std::exp(-x_v * x_v / (2.0 * th));
+    });
     return fx;
   }
 
@@ -51,8 +52,8 @@ private:
   }
 
   /* Define the dimension */
-  inline static dimension<P> const dim_0 =
-      dimension<P>(-6, 6, 3, 2, initial_condition_dim0, volume_jacobian_dV, "x");
+  inline static dimension<P> const dim_0 = dimension<P>(
+      -6, 6, 3, 2, initial_condition_dim0, volume_jacobian_dV, "x");
 
   inline static std::vector<dimension<P>> const dimensions_ = {dim_0};
 
@@ -64,19 +65,17 @@ private:
   static P g0(P const x, P const time)
   {
     ignore(time);
-    return nu*x;
+    return nu * x;
   }
 
-  inline static const partial_term<P> partial_term_0 =
-      partial_term<P>(coefficient_type::div, g0,
-                      nullptr, flux_type::central,
-                      boundary_condition::dirichlet, boundary_condition::dirichlet,
-                      homogeneity::homogeneous, homogeneity::homogeneous);
+  inline static const partial_term<P> partial_term_0 = partial_term<P>(
+      coefficient_type::div, g0, nullptr, flux_type::central,
+      boundary_condition::dirichlet, boundary_condition::dirichlet,
+      homogeneity::homogeneous, homogeneity::homogeneous);
 
-  inline static term<P> const term_0 =
-      term<P>(true, // time-dependent
-              "",   // name
-              {partial_term_0});
+  inline static term<P> const term_0 = term<P>(true, // time-dependent
+                                               "",   // name
+                                               {partial_term_0});
 
   //// TERM_1 = d_v(-uf)
 
@@ -88,35 +87,31 @@ private:
     return -u;
   }
 
-  inline static const partial_term<P> partial_term_1 =
-      partial_term<P>(coefficient_type::div, g1,
-                      nullptr, flux_type::central,
-                      boundary_condition::dirichlet, boundary_condition::dirichlet,
-                      homogeneity::homogeneous, homogeneity::homogeneous);
+  inline static const partial_term<P> partial_term_1 = partial_term<P>(
+      coefficient_type::div, g1, nullptr, flux_type::central,
+      boundary_condition::dirichlet, boundary_condition::dirichlet,
+      homogeneity::homogeneous, homogeneity::homogeneous);
 
-  inline static term<P> const term_1 =
-      term<P>(true, // time-dependent
-              "",   // name
-              {partial_term_1});
+  inline static term<P> const term_1 = term<P>(true, // time-dependent
+                                               "",   // name
+                                               {partial_term_1});
 
   //// TERM_2 = d_v(sqrt(th)*q), q = sqrt(th)*d_v(f)
 
-   static P g2(P const x, P const time)
+  static P g2(P const x, P const time)
   {
     ignore(time);
     ignore(x);
-    return std::sqrt(th*nu);
+    return std::sqrt(th * nu);
   }
 
-  inline static const partial_term<P> partial_term_2 =
-      partial_term<P>(coefficient_type::div, g2,
-                      nullptr, flux_type::central,
-                      boundary_condition::dirichlet, boundary_condition::dirichlet,
-                      homogeneity::homogeneous, homogeneity::homogeneous);
+  inline static const partial_term<P> partial_term_2 = partial_term<P>(
+      coefficient_type::div, g2, nullptr, flux_type::central,
+      boundary_condition::dirichlet, boundary_condition::dirichlet,
+      homogeneity::homogeneous, homogeneity::homogeneous);
 
   inline static const partial_term<P> partial_term_3 = partial_term<P>(
-      coefficient_type::grad, g2,
-      nullptr, flux_type::central,
+      coefficient_type::grad, g2, nullptr, flux_type::central,
       boundary_condition::dirichlet, boundary_condition::dirichlet,
       homogeneity::homogeneous, homogeneity::homogeneous);
 
@@ -137,9 +132,8 @@ private:
     return std::pow(0.25, dim.get_level());
   }
 
-  inline static std::vector<source<P>> const sources_ = {};
+  inline static std::vector<source<P>> const sources_                 = {};
   inline static std::vector<vector_func<P>> const exact_vector_funcs_ = {};
-  inline static scalar_func<P> const exact_scalar_func_ = {};
-
+  inline static scalar_func<P> const exact_scalar_func_               = {};
 };
 } // namespace asgard

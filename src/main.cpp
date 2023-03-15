@@ -117,7 +117,7 @@ int main(int argc, char **argv)
   asgard::node_out() << "  degrees of freedom (post initial adapt): "
                      << adaptive_grid.size() * static_cast<uint64_t>(std::pow(
                                                    degree, pde->num_dims))
-                 << '\n';
+                     << '\n';
 
   // -- regen mass mats after init conditions - TODO: check dims/rechaining?
   asgard::generate_dimension_mass_mat<prec>(*pde, transformer);
@@ -223,9 +223,9 @@ int main(int argc, char **argv)
   // -- time loop
 
   asgard::fk::vector<prec> f_val(initial_condition);
-  asgard::fk::vector<prec> IC = asgard::fk::vector<prec>(f_val.size());
+  asgard::fk::vector<prec> IC     = asgard::fk::vector<prec>(f_val.size());
   asgard::fk::vector<prec> ICdiff = asgard::fk::vector<prec>(f_val.size());
-  asgard::fm::copy(f_val,IC);
+  asgard::fm::copy(f_val, IC);
   asgard::node_out() << "--- begin time loop w/ dt " << pde->get_dt()
                      << " ---\n";
   for (auto i = 0; i < opts.num_time_steps; ++i)
@@ -338,7 +338,9 @@ int main(int argc, char **argv)
       ml_plot.plot_fval(*pde, adaptive_grid.get_table(), real_space,
                         analytic_solution_realspace);
 
-      ml_plot.set_var("f_val_real" + std::to_string(i), ml_plot.create_array({1, (unsigned long)real_space.size()}, real_space));                        
+      ml_plot.set_var("f_val_real" + std::to_string(i),
+                      ml_plot.create_array(
+                          {1, (unsigned long)real_space.size()}, real_space));
 
       // only plot pde params if the pde has them
       if (asgard::parameter_manager<prec>::get_instance().get_num_parameters() >
@@ -398,9 +400,11 @@ int main(int argc, char **argv)
   {
     auto const times = asgard::tools::timer.get_times("implicit_time_advance");
     asgard::node_out() << "Implicit solver times: ";
-    for(unsigned long ii=0; ii < times.size(); ++ii){
+    for (unsigned long ii = 0; ii < times.size(); ++ii)
+    {
       asgard::node_out() << times[ii];
-      if (ii < times.size()-1){
+      if (ii < times.size() - 1)
+      {
         asgard::node_out() << ", ";
       }
     }
