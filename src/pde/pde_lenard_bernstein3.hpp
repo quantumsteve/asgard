@@ -41,13 +41,43 @@ private:
   static int constexpr num_sources_        = 0;
   static int constexpr num_terms_          = 9;
   static bool constexpr do_poisson_solve_  = false;
-  static bool constexpr has_analytic_soln_ = false;
+  static bool constexpr has_analytic_soln_ = true;
 
   static P constexpr nu = 1.0e3;
   static P constexpr u_x = 1.0;
   static P constexpr u_y = 1.0;
   static P constexpr u_z = 1.0;
   static P constexpr th = 1.0;
+  static P constexpr prefactor = 1.0/std::sqrt(2.0*M_PI);
+
+  // specify exact solution vectors/time function...
+  static fk::vector<P> exact_solution_dim0(fk::vector<P> const x, P const t = 0)
+  {
+    ignore(t);
+    fk::vector<P> fx(x.size());
+    std::transform(x.begin(), x.end(), fx.begin(),
+                   [](P const &x_v) { return prefactor* std::exp(-1. * std::pow(x_v -1., 2)/(2.0*th)); });
+		    return fx;
+  }
+  static fk::vector<P> exact_solution_dim1(fk::vector<P> const x, P const t = 0)
+  {
+    ignore(t);
+    fk::vector<P> fx(x.size());
+    std::transform(x.begin(), x.end(), fx.begin(),
+                  [](P const &x_v) { return prefactor*std::exp(-1. * std::pow(x_v -1., 2)/(2.0*th)); });
+    return fx;
+  }
+
+  static fk::vector<P> exact_solution_dim2(fk::vector<P> const x, P const t = 0)
+  {
+    ignore(t);
+    fk::vector<P> fx(x.size());
+    std::transform(x.begin(), x.end(), fx.begin(),
+                  [](P const &x_v) { return prefactor*std::exp(-1. * std::pow(x_v -1., 2)/(2.0*th)); });
+    return fx;
+  }
+
+  static P exact_time(P const time) { return 1.0; }
 
   //
   // function definitions needed to build up the "dimension", "term", and
@@ -195,9 +225,9 @@ private:
       homogeneity::homogeneous, homogeneity::homogeneous);
   inline static term<P> const term_dvvf_ = term<P>(false, // time-dependent
                                                     "d_v(vf)", // name
-                                                    {partial_term_dvvf_});  
+                                                    {partial_term_dvvf_});
 
-  /*  div(vf)  */                                         
+  /*  div(vf)  */
 
   // term 0 -- d_x(xf)
   inline static std::vector<term<P>> const terms0_ = {term_dvvf_, I_, nu_};
@@ -221,7 +251,7 @@ private:
   }
   inline static partial_term<P> const partial_term_u_x_ =
       partial_term<P>(coefficient_type::div, g_func_u_x, g_func_identity,
-                      flux_type::central, 
+                      flux_type::central,
                       boundary_condition::dirichlet, boundary_condition::dirichlet,
                       homogeneity::homogeneous, homogeneity::homogeneous);
   inline static term<P> const term_u_x_ = term<P>(false,  // time-dependent
@@ -261,7 +291,7 @@ private:
   }
   inline static partial_term<P> const partial_term_u_z_ =
       partial_term<P>(coefficient_type::div, g_func_u_z, g_func_identity,
-                      flux_type::central, 
+                      flux_type::central,
                       boundary_condition::dirichlet, boundary_condition::dirichlet,
                       homogeneity::homogeneous, homogeneity::homogeneous);
   inline static term<P> const term_u_z_ = term<P>(false,  // time-dependent
@@ -283,12 +313,12 @@ private:
   }
   inline static partial_term<P> const partial_term_div_th =
       partial_term<P>(coefficient_type::div, g_func_sqrt_th, g_func_identity,
-                      flux_type::central, 
+                      flux_type::central,
                       boundary_condition::dirichlet, boundary_condition::dirichlet,
                       homogeneity::homogeneous, homogeneity::homogeneous);
   inline static partial_term<P> const partial_term_grad_th =
       partial_term<P>(coefficient_type::grad, g_func_sqrt_th, g_func_identity,
-                      flux_type::central, 
+                      flux_type::central,
                       boundary_condition::dirichlet, boundary_condition::dirichlet,
                       homogeneity::homogeneous, homogeneity::homogeneous);
   inline static term<P> const term_diff_th_ = term<P>(false,  // time-dependent
@@ -311,7 +341,7 @@ private:
                                             terms6_, terms7_, terms8_};
 
   inline static std::vector<source<P>> const sources_ = {};
-  inline static std::vector<vector_func<P>> const exact_vector_funcs_ = {};
-  inline static scalar_func<P> const exact_scalar_func_ = {};                                       
+  inline static std::vector<vector_func<P>> const exact_vector_funcs_ = {exact_solution_dim0,exact_solution_dim1,exact_solution_dim2};
+  inline static scalar_func<P> const exact_scalar_func_ = exact_time;
 };
 } // namespace asgard
