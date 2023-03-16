@@ -150,14 +150,6 @@ private:
     return dt;
   }
 
-  // g-funcs for terms (optional)
-  static P g_func_identity(P const x, P const time)
-  {
-    // suppress compiler warnings
-    ignore(x);
-    ignore(time);
-    return 1.0;
-  }
   static P g_func_nu(P const x, P const time)
   {
     // suppress compiler warnings
@@ -215,7 +207,7 @@ private:
 
   // default mass matrix (only for lev_x=lev_y=etc)
   inline static partial_term<P> const partial_term_I_ =
-      partial_term<P>(coefficient_type::mass, g_func_identity, g_func_identity,
+      partial_term<P>(coefficient_type::mass, nullptr, nullptr,
                       flux_type::central, boundary_condition::periodic,
                       boundary_condition::periodic);
   inline static term<P> const I_ = term<P>(false,  // time-dependent
@@ -224,7 +216,7 @@ private:
 
   // sd mass_matrix (nu f,g)
   inline static partial_term<P> const partial_term_nu_ = partial_term<P>(
-      coefficient_type::mass, g_func_nu, g_func_identity, flux_type::central,
+      coefficient_type::mass, g_func_nu, nullptr, flux_type::central,
       boundary_condition::periodic, boundary_condition::periodic);
   inline static term<P> const nu_ = term<P>(false,  // time-dependent
                                             "mass", // name
@@ -238,7 +230,7 @@ private:
     return x;
   }
   inline static partial_term<P> const partial_term_dvvf_ = partial_term<P>(
-      coefficient_type::div, g_func_v, g_func_identity, flux_type::central,
+      coefficient_type::div, g_func_v, nullptr, flux_type::central,
       boundary_condition::dirichlet, boundary_condition::dirichlet,
       homogeneity::homogeneous, homogeneity::homogeneous);
   inline static term<P> const term_dvvf_ = term<P>(false,     // time-dependent
@@ -267,7 +259,7 @@ private:
     return -u_x;
   }
   inline static partial_term<P> const partial_term_u_x_ = partial_term<P>(
-      coefficient_type::div, g_func_u_x, g_func_identity, flux_type::central,
+      coefficient_type::div, g_func_u_x, nullptr, flux_type::central,
       boundary_condition::dirichlet, boundary_condition::dirichlet,
       homogeneity::homogeneous, homogeneity::homogeneous);
   inline static term<P> const term_u_x_ = term<P>(false, // time-dependent
@@ -286,7 +278,7 @@ private:
     return -u_y;
   }
   inline static partial_term<P> const partial_term_u_y_ = partial_term<P>(
-      coefficient_type::div, g_func_u_y, g_func_identity, flux_type::central,
+      coefficient_type::div, g_func_u_y, nullptr, flux_type::central,
       boundary_condition::dirichlet, boundary_condition::dirichlet,
       homogeneity::homogeneous, homogeneity::homogeneous);
   inline static term<P> const term_u_y_ = term<P>(false, // time-dependent
@@ -305,7 +297,7 @@ private:
     return -u_z;
   }
   inline static partial_term<P> const partial_term_u_z_ = partial_term<P>(
-      coefficient_type::div, g_func_u_z, g_func_identity, flux_type::central,
+      coefficient_type::div, g_func_u_z, nullptr, flux_type::central,
       boundary_condition::dirichlet, boundary_condition::dirichlet,
       homogeneity::homogeneous, homogeneity::homogeneous);
   inline static term<P> const term_u_z_ = term<P>(false, // time-dependent
@@ -326,12 +318,12 @@ private:
     return std::sqrt(th);
   }
   inline static partial_term<P> const partial_term_div_th =
-      partial_term<P>(coefficient_type::div, g_func_sqrt_th, g_func_identity,
+      partial_term<P>(coefficient_type::div, g_func_sqrt_th, nullptr,
                       flux_type::central, boundary_condition::dirichlet,
                       boundary_condition::dirichlet, homogeneity::homogeneous,
                       homogeneity::homogeneous);
   inline static partial_term<P> const partial_term_grad_th =
-      partial_term<P>(coefficient_type::grad, g_func_sqrt_th, g_func_identity,
+      partial_term<P>(coefficient_type::grad, g_func_sqrt_th, nullptr,
                       flux_type::central, boundary_condition::dirichlet,
                       boundary_condition::dirichlet, homogeneity::homogeneous,
                       homogeneity::homogeneous);
