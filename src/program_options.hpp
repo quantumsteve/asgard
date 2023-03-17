@@ -50,7 +50,20 @@ enum class PDE_opts
   diffusion_2,
   vlasov_lb_full_f,
   vlasov_two_stream,
-  collisional_landau
+  vlasov_two_stream_1x2v,
+  relaxation_1x2v,
+  relaxation_1x3v,
+  collisional_landau,
+  collisional_landau_1x2v_case1,
+  collisional_landau_1x2v_case2,
+  collisional_landau_1x2v_case3,
+  collisional_landau_1x2v_case4,
+  collisional_landau_1x3v_case1,
+  collisional_landau_1x3v_case2,
+  collisional_landau_1x3v_case3,
+  collisional_landau_1x3v_case4,
+  riemann_1x2v,
+  riemann_1x3v
   // FIXME will need to add the user supplied PDE choice
 };
 
@@ -165,9 +178,56 @@ static pde_map_t const pde_mapping = {
     {"two_stream",
      PDE_descriptor("Vlasov two-stream. df/dt == -v*grad_x f -E*grad_v f",
                     PDE_opts::vlasov_two_stream)},
+    {"two_stream_1x2v",
+     PDE_descriptor("Vlasov two-stream. df/dt == -v*grad_x f -E*grad_v f",
+                    PDE_opts::vlasov_two_stream_1x2v)},
+    {"relaxation_1x2v",
+     PDE_descriptor("Relaxation 1x2v. df/dt == div_{v1} v_1 f + d_{v1} -u_1 f "
+                    "+ div_{v2} v_2 f + d_{v2} -u_2 f + d_{v1}(th q), q = "
+                    "d_{v1} f + d_{v2}(th q), q = d_{v2} f",
+                    PDE_opts::relaxation_1x2v)},
+    {"relaxation_1x3v",
+     PDE_descriptor("Relaxation 1x3v. df/dt == div_{v1} v_1 f + d_{v1} -u_1 f "
+                    "+ div_{v2} v_2 f + d_{v2} -u_2 f + d_{v1}(th q), q = "
+                    "d_{v1} f + d_{v2}(th q), q = d_{v2} f",
+                    PDE_opts::relaxation_1x3v)},
+    {"riemann_1x2v", PDE_descriptor("Riemann 1x2v", PDE_opts::riemann_1x2v)},
+    {"riemann_1x3v", PDE_descriptor("Riemann 1x3v", PDE_opts::riemann_1x3v)},
     {"landau", PDE_descriptor("Collisional Landau. df/dt == -v*grad_x f "
                               "-E*grad_v f + div_v((v-u)f + theta*grad_v f)",
-                              PDE_opts::collisional_landau)}};
+                              PDE_opts::collisional_landau)},
+    {"landau_1x2v_nu0",
+     PDE_descriptor("Collisional Landau 1x2v, nu = 0. df/dt == -v*grad_x f "
+                    "-E*grad_v f + div_v((v-u)f + theta*grad_v f)",
+                    PDE_opts::collisional_landau_1x2v_case1)},
+    {"landau_1x2v_nu1",
+     PDE_descriptor("Collisional Landau 1x2v, nu = 1. df/dt == -v*grad_x f "
+                    "-E*grad_v f + div_v((v-u)f + theta*grad_v f)",
+                    PDE_opts::collisional_landau_1x2v_case2)},
+    {"landau_1x2v_nu10",
+     PDE_descriptor("Collisional Landau 1x2v, nu = 10. df/dt == -v*grad_x f "
+                    "-E*grad_v f + div_v((v-u)f + theta*grad_v f)",
+                    PDE_opts::collisional_landau_1x2v_case3)},
+    {"landau_1x2v_nu100",
+     PDE_descriptor("Collisional Landau 1x2v, nu = 100. df/dt == -v*grad_x f "
+                    "-E*grad_v f + div_v((v-u)f + theta*grad_v f)",
+                    PDE_opts::collisional_landau_1x2v_case4)},
+    {"landau_1x3v_nu0",
+     PDE_descriptor("Collisional Landau 1x3v, nu = 0. df/dt == -v*grad_x f "
+                    "-E*grad_v f + div_v((v-u)f + theta*grad_v f)",
+                    PDE_opts::collisional_landau_1x3v_case1)},
+    {"landau_1x3v_nu1",
+     PDE_descriptor("Collisional Landau 1x3v, nu = 1. df/dt == -v*grad_x f "
+                    "-E*grad_v f + div_v((v-u)f + theta*grad_v f)",
+                    PDE_opts::collisional_landau_1x3v_case2)},
+    {"landau_1x3v_nu10",
+     PDE_descriptor("Collisional Landau 1x3v, nu = 10. df/dt == -v*grad_x f "
+                    "-E*grad_v f + div_v((v-u)f + theta*grad_v f)",
+                    PDE_opts::collisional_landau_1x3v_case3)},
+    {"landau_1x3v_nu100",
+     PDE_descriptor("Collisional Landau 1x3v, nu = 100. df/dt == -v*grad_x f "
+                    "-E*grad_v f + div_v((v-u)f + theta*grad_v f)",
+                    PDE_opts::collisional_landau_1x3v_case4)}};
 
 // class to parse command line input
 class parser
@@ -183,7 +243,7 @@ public:
   static auto constexpr DEFAULT_MIXED_GRID_GROUP  = -1;
   static auto constexpr DEFAULT_TIME_STEPS        = 10;
   static auto constexpr DEFAULT_WRITE_FREQ        = 0;
-  static auto constexpr DEFAULT_PLOT_FREQ         = 1;
+  static auto constexpr DEFAULT_PLOT_FREQ         = 1e9;
   static auto constexpr DEFAULT_USE_IMPLICIT      = false;
   static auto constexpr DEFAULT_USE_IMEX          = false;
   static auto constexpr DEFAULT_USE_FG            = false;
@@ -199,6 +259,7 @@ public:
   static auto constexpr DEFAULT_GMRES_TOLERANCE   = NO_USER_VALUE_FP;
   static auto constexpr DEFAULT_GMRES_INNER_ITERATIONS = NO_USER_VALUE;
   static auto constexpr DEFAULT_GMRES_OUTER_ITERATIONS = NO_USER_VALUE;
+  static auto constexpr DEFAULT_GPU_DEVICE             = NO_USER_VALUE;
 
   // construct from command line
   explicit parser(int argc, char const *const *argv);
@@ -220,7 +281,9 @@ public:
       kronmult_mode const kmode_in         = DEFAULT_KRONMULT_MODE,
       double const gmres_tolerance_in      = DEFAULT_GMRES_TOLERANCE,
       int const gmres_inner_iterations_in  = DEFAULT_GMRES_INNER_ITERATIONS,
-      int const gmres_outer_iterations_in  = DEFAULT_GMRES_OUTER_ITERATIONS)
+      int const gmres_outer_iterations_in  = DEFAULT_GMRES_OUTER_ITERATIONS,
+      std::string const restart_file_in    = NO_USER_VALUE_STR,
+      int const device_in                  = DEFAULT_GPU_DEVICE)
       : use_implicit_stepping(use_implicit), use_full_grid(use_full_grid_in),
         do_adapt(do_adapt_levels), starting_levels(starting_levels_in),
         degree(degree_in), max_level(max_level_in),
@@ -231,7 +294,9 @@ public:
         memory_limit(memory_limit_in), kmode(kmode_in),
         gmres_tolerance(gmres_tolerance_in),
         gmres_inner_iterations(gmres_inner_iterations_in),
-        gmres_outer_iterations(gmres_outer_iterations_in){};
+        gmres_outer_iterations(gmres_outer_iterations_in),
+        restart_file(restart_file_in),
+        device(device_in){};
 
   explicit parser(
       std::string const &pde_choice_in, fk::vector<int> starting_levels_in,
@@ -249,13 +314,15 @@ public:
       kronmult_mode const kmode_in         = DEFAULT_KRONMULT_MODE,
       double const gmres_tolerance_in      = DEFAULT_GMRES_TOLERANCE,
       int const gmres_inner_iterations_in  = DEFAULT_GMRES_INNER_ITERATIONS,
-      int const gmres_outer_iterations_in  = DEFAULT_GMRES_OUTER_ITERATIONS)
+      int const gmres_outer_iterations_in  = DEFAULT_GMRES_OUTER_ITERATIONS,
+      std::string const restart_file_in    = NO_USER_VALUE_STR,
+      int const device_in                  = DEFAULT_GPU_DEVICE)
       : parser(pde_mapping.at(pde_choice_in).pde_choice, starting_levels_in,
                degree_in, cfl_in, use_full_grid_in, max_level_in,
                mixed_grid_group_in, num_steps, use_implicit, do_adapt_levels,
                adapt_threshold_in, solver_str_in, use_imex, memory_limit_in,
                kmode_in, gmres_tolerance_in, gmres_inner_iterations_in,
-               gmres_outer_iterations_in){};
+               gmres_outer_iterations_in, restart_file_in, device_in){};
   /*!
    * \brief Simple utility to modify private members of the parser.
    */
@@ -266,6 +333,7 @@ public:
   bool using_full_grid() const;
   bool do_poisson_solve() const;
   bool do_adapt_levels() const;
+  bool do_restart() const;
 
   fk::vector<int> get_starting_levels() const;
   fk::vector<int> get_active_terms() const;
@@ -277,6 +345,7 @@ public:
   int get_memory_limit() const;
   int get_gmres_inner_iterations() const;
   int get_gmres_outer_iterations() const;
+  int get_device_id() const;
 
   int get_wavelet_output_freq() const;
   int get_realspace_output_freq() const;
@@ -296,6 +365,10 @@ public:
 
   std::string get_ml_session_string() const;
   int get_plot_freq() const;
+
+  std::string get_restart_file() const;
+
+  std::vector<std::string> cli_opts;
 
   bool is_valid() const;
 
@@ -393,6 +466,11 @@ private:
   int gmres_inner_iterations = DEFAULT_GMRES_INNER_ITERATIONS;
   int gmres_outer_iterations = DEFAULT_GMRES_OUTER_ITERATIONS;
 
+  std::string restart_file = NO_USER_VALUE_STR;
+
+  // GPU device index to use
+  int device = DEFAULT_GPU_DEVICE;
+
   // is there a better (testable) way to handle invalid command-line input?
   bool valid = true;
 };
@@ -412,6 +490,7 @@ struct parser_mod
     memory_limit,
     gmres_inner_iterations,
     gmres_outer_iterations,
+    device,
     // bool values
     use_implicit_stepping,
     use_full_grid,
@@ -424,7 +503,10 @@ struct parser_mod
     adapt_threshold,
     gmres_tolerance,
     // string
-    solver_str
+    solver_str,
+    pde_str,
+    starting_levels_str,
+    restart_file
   };
   static void set(parser &p, parser_option_entry entry, int value);
   static void set(parser &p, parser_option_entry entry, bool value);
@@ -456,7 +538,8 @@ public:
         do_poisson_solve(user_vals.do_poisson_solve()),
         do_adapt_levels(user_vals.do_adapt_levels()),
         solver(user_vals.get_selected_solver()),
-        use_imex_stepping(user_vals.using_imex()){};
+        use_imex_stepping(user_vals.using_imex()),
+        restart_file(user_vals.get_restart_file()){};
 
   bool should_output_wavelet(int const i) const;
   bool should_output_realspace(int const i) const;
@@ -486,6 +569,8 @@ public:
   solve_opts const solver;
 
   bool const use_imex_stepping;
+
+  std::string restart_file;
 
 private:
   // helper for output writing

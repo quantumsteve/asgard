@@ -170,8 +170,9 @@ legendre_weights(int const degree, no_deduce<P> const lower_bound,
     return std::max(minimum_quadrature, degree_in + 1);
   };
 
-  int const num_points =
-      use_degree_points ? degree : default_quad_number(degree);
+  // int const num_points =
+  //     use_degree_points ? degree : default_quad_number(degree);
+  int const num_points = degree;
 
   // prepare output vectors
   // the number of roots of a Legendre polynomial is equal to its degree

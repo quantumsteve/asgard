@@ -10,6 +10,7 @@ class PDE;
 #include "elements.hpp"
 #include "pde/pde_base.hpp"
 #include "program_options.hpp"
+#include "sparse.hpp"
 #include "tensors.hpp"
 #include <vector>
 
@@ -32,7 +33,7 @@ class moment
 public:
   moment(std::vector<md_func_type<P>> md_funcs_);
   void createFlist(PDE<P> const &pde, options const &opts);
-  void createMomentVector(PDE<P> const &pde, parser const &opts,
+  void createMomentVector(PDE<P> const &pde, options const &opts,
                           elements::table const &hash_table);
 
   std::vector<md_func_type<P>> const &get_md_funcs() const { return md_funcs; }
@@ -42,15 +43,31 @@ public:
     return fList;
   }
   fk::matrix<P> const &get_moment_matrix() const { return moment_matrix; }
+  fk::sparse<P, mem_type::owner, resource::device> const &
+  get_moment_matrix_dev() const
+  {
+    return sparse_mat;
+  }
 
   void createMomentReducedMatrix(PDE<P> const &pde,
                                  elements::table const &hash_table);
 
   fk::vector<P> const &get_realspace_moment() const { return realspace; }
+  void set_realspace_moment(fk::vector<P> &&realspace_in)
+  {
+    realspace = std::move(realspace_in);
+  }
 
   fk::vector<P> &create_realspace_moment(
       PDE<P> const &pde_1d, fk::vector<P> &wave, elements::table const &table,
       asgard::basis::wavelet_transform<P, resource::host> const &transformer,
+      std::array<fk::vector<P, mem_type::view, resource::host>, 2> &workspace);
+
+  fk::vector<P> &create_realspace_moment(
+      PDE<P> const &pde_1d,
+      fk::vector<P, mem_type::owner, resource::device> &wave,
+      elements::table const &table,
+      basis::wavelet_transform<P, resource::host> const &transformer,
       std::array<fk::vector<P, mem_type::view, resource::host>, 2> &workspace);
 
 private:
@@ -62,7 +79,9 @@ private:
   std::vector<std::vector<fk::vector<P>>> fList;
   fk::vector<P> vector;
   fk::matrix<P> moment_matrix;
+  fk::matrix<P, mem_type::owner, resource::device> moment_matrix_dev;
   fk::vector<P> realspace;
+  fk::sparse<P, mem_type::owner, resource::device> sparse_mat;
   // moment_fval_integral;
   // moment_analytic_integral;
 };

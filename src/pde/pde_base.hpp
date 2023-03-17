@@ -99,6 +99,18 @@ struct gmres_info
   int inner_iter;
 };
 
+template<typename P>
+struct adaptive_info
+{
+  // Holds the DOF count for each coarsen and refine step for the current time
+  // step
+  int initial_dof;
+  int coarsen_dof;
+  std::vector<int> refine_dofs;
+  // Hold a vector of the GMRES stats for each adapt step
+  std::vector<std::vector<gmres_info<P>>> gmres_stats;
+};
+
 // ---------------------------------------------------------------------------
 //
 // Term: describes a single term in the pde for operator matrix
@@ -174,7 +186,7 @@ public:
   fk::matrix<P> const get_coefficients(int const level) const
   {
     // returns precomputed inv(mass) * coeff for this level
-    expect(static_cast<int>(coefficients_.size()) >= level);
+    expect(static_cast<int>(coefficients_.size()) > level);
     expect(level >= 0);
     return coefficients_[level];
   }
@@ -196,6 +208,16 @@ public:
       fm::gesv(mass_tmp, result, ipiv);
       coefficients_.push_back(std::move(result));
     }
+  }
+
+  void set_coefficients(fk::matrix<P> const &&new_coefficients, int const level)
+  {
+    // set the coefficients at the given level
+    expect(coefficients_.size() > static_cast<size_t>(level));
+    // coefficients_[level] = std::move(new_coefficients);
+    this->coefficients_[level].clear_and_resize(new_coefficients.nrows(),
+                                                new_coefficients.ncols()) =
+        std::move(new_coefficients);
   }
 
   void set_coefficients(std::vector<fk::matrix<P>> const &new_coefficients)
@@ -272,12 +294,14 @@ public:
         new_coefficients.nrows(), new_coefficients.ncols()) = new_coefficients;
   }
 
-  void set_partial_coefficients(fk::matrix<P> const &coeffs, int const pterm,
+  void set_partial_coefficients(fk::matrix<P> const &&coeffs, int const pterm,
                                 int const deg, int const max_lev)
   {
     expect(pterm >= 0);
     expect(pterm < static_cast<int>(partial_terms_.size()));
-    partial_terms_[pterm].set_coefficients(coeffs, deg, max_lev);
+    ignore(deg);
+    // partial_terms_[pterm].set_coefficients(coeffs, deg, max_lev);
+    partial_terms_[pterm].set_coefficients(std::move(coeffs), max_lev);
   }
 
   void set_partial_coefficients(std::vector<fk::matrix<P>> const &coeffs,
@@ -487,9 +511,10 @@ public:
       bool const do_collision_operator_in     = true)
       : num_dims(num_dims_in), num_sources(num_sources_in),
         num_terms(get_num_terms(cli_input, max_num_terms)),
-        max_level(get_max_level(cli_input, dimensions)), sources(sources_in),
-        exact_vector_funcs(exact_vector_funcs_in), moments(moments_in),
-        exact_time(exact_time_in), do_poisson_solve(do_poisson_solve_in),
+        max_level(get_max_level(cli_input, dimensions)), cli(cli_input),
+        sources(sources_in), exact_vector_funcs(exact_vector_funcs_in),
+        moments(moments_in), exact_time(check_exact_time(exact_time_in)),
+        do_poisson_solve(do_poisson_solve_in),
         do_collision_operator(do_collision_operator_in),
         has_analytic_soln(has_analytic_soln_in), dimensions_(dimensions),
         terms_(terms)
@@ -527,7 +552,7 @@ public:
       for (dimension<P> &d : dimensions_)
       {
         auto const num_levels = cli_input.get_starting_levels()(counter++);
-        expect(num_levels > 1);
+        expect(num_levels >= 1);
         d.set_level(num_levels);
       }
     }
@@ -591,17 +616,19 @@ public:
     for (auto const &d : dimensions_)
     {
       expect(d.get_degree() > 0);
-      expect(d.get_level() > 1);
+      expect(d.get_level() >= 1);
       expect(d.domain_max > d.domain_min);
     }
 
     // initialize mass matrices to a default value
     for (auto i = 0; i < num_dims; ++i)
     {
-      auto const max_dof =
-          fm::two_raised_to(static_cast<int64_t>(max_level)) * degree;
-      expect(max_dof < INT_MAX);
-      update_dimension_mass_mat(i, eye<P>(max_dof));
+      for (int level = 0; level <= max_level; ++level)
+      {
+        auto const dof = fm::two_raised_to(level) * degree;
+        expect(dof < INT_MAX);
+        update_dimension_mass_mat(i, eye<P>(dof), level);
+      }
     }
 
     // check all sources
@@ -639,6 +666,30 @@ public:
     }
 
     gmres_outputs.resize(cli_input.using_imex() ? 2 : 1);
+
+    // hack to preallocate empty matrix for pterm coefficients for adapt
+    // if (cli_input.do_adapt_levels()) {
+    for (auto i = 0; i < num_dims; ++i)
+    {
+      auto const &dim = this->get_dimensions()[i];
+      for (auto j = 0; j < num_terms; ++j)
+      {
+        auto const &term_1D       = this->get_terms()[j][i];
+        auto const &partial_terms = term_1D.get_partial_terms();
+        for (auto k = 0; k < static_cast<int>(partial_terms.size()); ++k)
+        {
+          std::vector<fk::matrix<P>> pterm_coeffs;
+          for (int level = 0; level <= max_level; ++level)
+          {
+            auto const dof = dim.get_degree() * fm::two_raised_to(level);
+            fk::matrix<P> result_tmp = eye<P>(dof);
+            pterm_coeffs.emplace_back(std::move(result_tmp));
+          }
+          this->set_partial_coefficients(j, i, k, std::move(pterm_coeffs));
+        }
+      }
+    }
+    //}
   }
 
   constexpr static int extract_dim0 = 1;
@@ -650,9 +701,9 @@ public:
   PDE(const PDE &pde, int)
       : num_dims(1), num_sources(pde.sources.size()),
         num_terms(pde.get_terms().size()), max_level(pde.max_level),
-        sources(pde.sources), exact_vector_funcs(pde.exact_vector_funcs),
-        moments(pde.moments), exact_time(pde.exact_time),
-        do_poisson_solve(pde.do_poisson_solve),
+        cli(pde.cli), sources(pde.sources),
+        exact_vector_funcs(pde.exact_vector_funcs), moments(pde.moments),
+        exact_time(pde.exact_time), do_poisson_solve(pde.do_poisson_solve),
         do_collision_operator(pde.do_collision_operator),
         has_analytic_soln(pde.has_analytic_soln),
         dimensions_({pde.get_dimensions()[0]}), terms_(pde.get_terms())
@@ -663,6 +714,7 @@ public:
   int const num_sources;
   int const num_terms;
   int const max_level;
+  parser const &cli;
 
   std::vector<source<P>> const sources;
   std::vector<md_func_type<P>> const exact_vector_funcs;
@@ -676,8 +728,11 @@ public:
   fk::vector<P> poisson_off_diag;
 
   fk::vector<P> E_field;
+  fk::vector<P> phi;
+  fk::vector<P> E_source;
   // holds gmres error and iteration counts for writing to output file
   std::vector<gmres_info<P>> gmres_outputs;
+  adaptive_info<P> adapt_info;
 
   virtual ~PDE() {}
 
@@ -712,14 +767,15 @@ public:
   }
 
   void set_partial_coefficients(int const term, int const dim, int const pterm,
-                                fk::matrix<P> const &coeffs)
+                                fk::matrix<P> const &&coeffs)
   {
     expect(term >= 0);
     expect(term < num_terms);
     expect(dim >= 0);
     expect(dim < num_dims);
-    terms_[term][dim].set_partial_coefficients(
-        coeffs, pterm, dimensions_[dim].get_degree(), max_level);
+    terms_[term][dim].set_partial_coefficients(std::move(coeffs), pterm,
+                                               dimensions_[dim].get_degree(),
+                                               dimensions_[dim].get_level());
   }
 
   void set_partial_coefficients(int const term, int const dim, int const pterm,
@@ -771,12 +827,13 @@ public:
     }
   }
 
-  void update_dimension_mass_mat(int const dim_index, fk::matrix<P> const &mass)
+  void update_dimension_mass_mat(int const dim_index, fk::matrix<P> const &mass,
+                                 int const level)
   {
     assert(dim_index >= 0);
     assert(dim_index < num_dims);
 
-    dimensions_[dim_index].set_mass_matrix(mass);
+    dimensions_[dim_index].set_mass_matrix(std::move(mass), level);
   }
 
   P get_dt() const { return dt_; };
@@ -837,6 +894,22 @@ private:
                          return a.get_level() < b.get_level();
                        })
                        ->get_level();
+    }
+  }
+
+  scalar_func<P> check_exact_time(scalar_func<P> const &exact_time_func)
+  {
+    // check if the PDE exact time function was defined, or return an empty one
+    if (!exact_time_func)
+    {
+      return [](P const t) {
+        ignore(t);
+        return P{1.0};
+      };
+    }
+    else
+    {
+      return exact_time_func;
     }
   }
 

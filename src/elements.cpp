@@ -270,6 +270,20 @@ table::table(options const &opts, std::vector<dimension<P>> const &dims)
   }();
 
   fk::vector<int> dev_table_builder;
+  if (opts.use_full_grid)
+  {
+    int64_t dof = 1;
+    for (int lev = 0; lev < dims.size(); lev++)
+    {
+      dof *= dims[0].get_degree() * fm::two_raised_to(dims[lev].get_level());
+    }
+    std::cout << "    FG DOF = " << dof << std::endl;
+
+    // reserve element table data up front
+    dev_table_builder.resize(dof);
+  }
+
+  int64_t pos = 0;
   for (int row = 0; row < perm_table.nrows(); ++row)
   {
     // get the level tuple to work on
@@ -278,6 +292,8 @@ table::table(options const &opts, std::vector<dimension<P>> const &dims)
     // calculate all possible cell indices allowed by this level tuple
     fk::matrix<int> const index_set = get_cell_index_set(level_tuple);
 
+    std::cout << " row " << row << " / " << perm_table.nrows()
+              << " -- index set rows = " << index_set.nrows() << std::endl;
     for (int cell_set = 0; cell_set < index_set.nrows(); ++cell_set)
     {
       auto const cell_indices = fk::vector<int>(
@@ -292,12 +308,85 @@ table::table(options const &opts, std::vector<dimension<P>> const &dims)
       id_to_coords_[key].resize(coords.size()) = coords;
 
       // assign into flattened device table builder
-      dev_table_builder.concat(coords);
+      if (pos + coords.size() < dev_table_builder.size())
+      {
+        dev_table_builder.set_subvector(pos, coords);
+      }
+      else
+      {
+        // if this is larger than our pre-allocated size, then start resizing
+        dev_table_builder.concat(coords);
+        std::cout << "  flattened table size = " << dev_table_builder.size()
+                  << std::endl;
+      }
+      pos += coords.size();
     }
+  }
+
+  std::cout << " FINISHED CREATING ELEMENT TABLE\n";
+  std::cout << "  TOTAL SIZE = " << dev_table_builder.size()
+            << ", ACTUAL size = " << pos << std::endl;
+  if (pos < dev_table_builder.size())
+  {
+    std::cout << "   over allocated, shrinking table\n";
+    dev_table_builder = dev_table_builder.extract(0, pos - 1);
   }
 
   expect(active_element_ids_.size() == id_to_coords_.size());
   active_table_.resize(dev_table_builder.size()) = dev_table_builder;
+}
+
+void table::recreate_from_elements(std::vector<int64_t> const &element_ids,
+                                   int const max_level)
+{
+  // For restarting, we want the element table to contain only the active ids
+  // from the restart file. The active ids saved in the restart file is the
+  // flattened device table, so we need to recreate the element key from the
+  // coordinates.
+  std::vector<int64_t> original_ids(active_element_ids_);
+
+  int const coord_size = get_coords(0).size();
+  expect(coord_size % 2 == 0);
+  int const num_dims = coord_size / 2;
+
+  // calculate the new table size based on the size of each element
+  expect(element_ids.size() % coord_size == 0);
+  int const new_table_size = static_cast<int>(element_ids.size() / coord_size);
+
+  std::cout << "Recreating element table:\n";
+  std::cout << "  - original elements: " << original_ids.size() << "\n";
+  std::cout << "  - elements from restart: " << new_table_size << "\n";
+
+  // clear the existing hash table
+  active_element_ids_.clear();
+  id_to_coords_.clear();
+
+  fk::vector<int> dev_table_builder;
+  for (int i = 0; i < new_table_size; i++)
+  {
+    // build a coord set out of the flattened device table
+    fk::vector<int> coords(coord_size);
+    for (int j = 0; j < coord_size; j++)
+    {
+      coords(j) = element_ids[j + i * coord_size];
+    }
+
+    // get full linear id as key to active element id
+    int64_t id = map_to_id(coords, max_level, num_dims);
+
+    // add this element to the hash table
+    active_element_ids_.push_back(id);
+    id_to_coords_[id].resize(coords.size()) = coords;
+
+    // add the element coords to the flattened device table
+    dev_table_builder.concat(coords);
+  }
+
+  expect(active_element_ids_.size() == id_to_coords_.size());
+  active_table_.resize(dev_table_builder.size()) = dev_table_builder;
+
+  std::cout << "  - after recreation: " << size() << "\n";
+  expect(size() == new_table_size);
 }
 
 // static construction helper

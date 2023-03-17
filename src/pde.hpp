@@ -16,6 +16,8 @@
 
 #include "pde/pde_advection1.hpp"
 #include "pde/pde_collisional_landau.hpp"
+#include "pde/pde_collisional_landau_1x2v.hpp"
+#include "pde/pde_collisional_landau_1x3v.hpp"
 #include "pde/pde_continuity1.hpp"
 #include "pde/pde_continuity2.hpp"
 #include "pde/pde_continuity3.hpp"
@@ -28,7 +30,12 @@
 #include "pde/pde_fokkerplanck1_pitch_C.hpp"
 #include "pde/pde_fokkerplanck1_pitch_E.hpp"
 #include "pde/pde_fokkerplanck2_complete.hpp"
+#include "pde/pde_relaxation_1x2v.hpp"
+#include "pde/pde_relaxation_1x3v.hpp"
+#include "pde/pde_riemann_1x2v.hpp"
+#include "pde/pde_riemann_1x3v.hpp"
 #include "pde/pde_two_stream.hpp"
+#include "pde/pde_two_stream_1x2v.hpp"
 #include "pde/pde_vlasov_lb_full_f.hpp"
 #include "tensors.hpp"
 
@@ -97,8 +104,42 @@ std::unique_ptr<PDE<P>> make_PDE(parser const &cli_input)
     return std::make_unique<PDE_vlasov_lb<P>>(cli_input);
   case PDE_opts::vlasov_two_stream:
     return std::make_unique<PDE_vlasov_two_stream<P>>(cli_input);
+  case PDE_opts::vlasov_two_stream_1x2v:
+    return std::make_unique<PDE_vlasov_two_stream_1x2v<P>>(cli_input);
+  case PDE_opts::relaxation_1x2v:
+    return std::make_unique<PDE_relaxation_1x2v<P>>(cli_input);
+  case PDE_opts::relaxation_1x3v:
+    return std::make_unique<PDE_relaxation_1x3v<P>>(cli_input);
+  case PDE_opts::riemann_1x2v:
+    return std::make_unique<PDE_riemann_1x2v<P>>(cli_input);
+  case PDE_opts::riemann_1x3v:
+    return std::make_unique<PDE_riemann_1x3v<P>>(cli_input);
   case PDE_opts::collisional_landau:
     return std::make_unique<PDE_collisional_landau<P>>(cli_input);
+  case PDE_opts::collisional_landau_1x2v_case1:
+    return std::make_unique<
+        PDE_collisional_landau_1x2v<P, PDE_case_opts::case1>>(cli_input);
+  case PDE_opts::collisional_landau_1x2v_case2:
+    return std::make_unique<
+        PDE_collisional_landau_1x2v<P, PDE_case_opts::case2>>(cli_input);
+  case PDE_opts::collisional_landau_1x2v_case3:
+    return std::make_unique<
+        PDE_collisional_landau_1x2v<P, PDE_case_opts::case3>>(cli_input);
+  case PDE_opts::collisional_landau_1x2v_case4:
+    return std::make_unique<
+        PDE_collisional_landau_1x2v<P, PDE_case_opts::case4>>(cli_input);
+  case PDE_opts::collisional_landau_1x3v_case1:
+    return std::make_unique<
+        PDE_collisional_landau_1x3v<P, PDE_case_opts::case1>>(cli_input);
+  case PDE_opts::collisional_landau_1x3v_case2:
+    return std::make_unique<
+        PDE_collisional_landau_1x3v<P, PDE_case_opts::case2>>(cli_input);
+  case PDE_opts::collisional_landau_1x3v_case3:
+    return std::make_unique<
+        PDE_collisional_landau_1x3v<P, PDE_case_opts::case3>>(cli_input);
+  case PDE_opts::collisional_landau_1x3v_case4:
+    return std::make_unique<
+        PDE_collisional_landau_1x3v<P, PDE_case_opts::case4>>(cli_input);
   default:
     std::cout << "Invalid pde choice" << std::endl;
     exit(-1);
@@ -189,8 +230,35 @@ make_PDE(PDE_opts const pde_choice, int const level = parser::NO_USER_VALUE,
     case PDE_opts::vlasov_two_stream:
       return fk::vector<int>(std::vector<int>(2, level));
 
+    case PDE_opts::vlasov_two_stream_1x2v:
+      return fk::vector<int>(std::vector<int>(3, level));
+
+    case PDE_opts::relaxation_1x2v:
+      return fk::vector<int>(std::vector<int>(3, level));
+
+    case PDE_opts::relaxation_1x3v:
+      return fk::vector<int>(std::vector<int>(4, level));
+
+    case PDE_opts::riemann_1x2v:
+      return fk::vector<int>(std::vector<int>(3, level));
+
+    case PDE_opts::riemann_1x3v:
+      return fk::vector<int>(std::vector<int>(4, level));
+
     case PDE_opts::collisional_landau:
       return fk::vector<int>(std::vector<int>(2, level));
+
+    case PDE_opts::collisional_landau_1x2v_case1:
+    case PDE_opts::collisional_landau_1x2v_case2:
+    case PDE_opts::collisional_landau_1x2v_case3:
+    case PDE_opts::collisional_landau_1x2v_case4:
+      return fk::vector<int>(std::vector<int>(3, level));
+
+    case PDE_opts::collisional_landau_1x3v_case1:
+    case PDE_opts::collisional_landau_1x3v_case2:
+    case PDE_opts::collisional_landau_1x3v_case3:
+    case PDE_opts::collisional_landau_1x3v_case4:
+      return fk::vector<int>(std::vector<int>(4, level));
 
     default:
       std::cout << "Invalid pde choice" << std::endl;

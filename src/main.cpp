@@ -108,7 +108,7 @@ int main(int argc, char **argv)
 
   // -- generate initial condition vector
   asgard::node_out() << "  generating: initial conditions..." << '\n';
-  auto const initial_condition =
+  auto initial_condition =
       adaptive_grid.get_initial_condition(*pde, transformer, opts);
   asgard::node_out() << "  degrees of freedom (post initial adapt): "
                      << adaptive_grid.size() * static_cast<uint64_t>(std::pow(
@@ -120,7 +120,7 @@ int main(int argc, char **argv)
 
   // -- generate and store coefficient matrices.
   asgard::node_out() << "  generating: coefficient matrices..." << '\n';
-  asgard::generate_all_coefficients<prec>(*pde, transformer);
+  asgard::generate_all_coefficients_max_level<prec>(*pde, transformer);
 
   // -- initialize moments of the PDE
   asgard::node_out() << "  generating: moment vectors..." << '\n';
@@ -129,7 +129,7 @@ int main(int argc, char **argv)
     m.createFlist(*pde, opts);
     expect(m.get_fList().size() > 0);
 
-    m.createMomentVector(*pde, cli_input, adaptive_grid.get_table());
+    m.createMomentVector(*pde, opts, adaptive_grid.get_table());
     expect(m.get_vector().size() > 0);
   }
 
@@ -144,25 +144,33 @@ int main(int argc, char **argv)
 
   // realspace solution vector - WARNING this is
   // currently infeasible to form for large problems
-  auto const dense_size = asgard::dense_space_size(*pde);
-  asgard::fk::vector<prec> real_space(dense_size);
-
+  auto dense_size = asgard::dense_space_size(*pde);
   // temporary workspaces for the transform
+  asgard::fk::vector<prec> real_space;
   asgard::fk::vector<prec, asgard::mem_type::owner, asgard::resource::host>
-      workspace(dense_size * 2);
+      workspace;
   std::array<
       asgard::fk::vector<prec, asgard::mem_type::view, asgard::resource::host>,
       2>
-      tmp_workspace = {asgard::fk::vector<prec, asgard::mem_type::view,
-                                          asgard::resource::host>(
-                           workspace, 0, dense_size - 1),
-                       asgard::fk::vector<prec, asgard::mem_type::view,
-                                          asgard::resource::host>(
-                           workspace, dense_size, dense_size * 2 - 1)};
+      tmp_workspace;
+
   // transform initial condition to realspace
-  asgard::wavelet_to_realspace<prec>(*pde, initial_condition,
-                                     adaptive_grid.get_table(), transformer,
-                                     tmp_workspace, real_space);
+  if (cli_input.get_realspace_output_freq() > 0)
+  {
+    // allocate temp transform workspaces only if needed
+    real_space.resize(dense_size);
+    workspace.resize(dense_size * 2);
+    tmp_workspace = {asgard::fk::vector<prec, asgard::mem_type::view,
+                                        asgard::resource::host>(workspace, 0,
+                                                                dense_size - 1),
+                     asgard::fk::vector<prec, asgard::mem_type::view,
+                                        asgard::resource::host>(
+                         workspace, dense_size, dense_size * 2 - 1)};
+
+    asgard::wavelet_to_realspace<prec>(*pde, initial_condition,
+                                       adaptive_grid.get_table(), transformer,
+                                       tmp_workspace, real_space);
+  }
 #endif
 
 #ifdef ASGARD_USE_MATLAB
@@ -206,18 +214,36 @@ int main(int argc, char **argv)
 #endif
 
   // -- setup output file and write initial condition
+  int start_step = 0;
 #ifdef ASGARD_IO_HIGHFIVE
-  // compute the realspace moments for the initial file write
-  asgard::generate_initial_moments(*pde, opts, adaptive_grid, transformer,
-                                   initial_condition);
+  if (cli_input.do_restart())
+  {
+    asgard::restart_data<prec> data = asgard::read_output(
+        *pde, adaptive_grid.get_table(), cli_input.get_restart_file());
+    initial_condition = std::move(data.solution);
+    start_step        = data.step_index;
+
+    adaptive_grid.recreate_table(data.active_table, data.max_level);
+
+    asgard::generate_dimension_mass_mat<prec>(*pde, transformer);
+    asgard::generate_all_coefficients<prec>(*pde, transformer);
+  }
+  else
+  {
+    // compute the realspace moments for the initial file write
+    asgard::generate_initial_moments(*pde, opts, adaptive_grid, transformer,
+                                     initial_condition);
+  }
   if (cli_input.get_wavelet_output_freq() > 0)
   {
     asgard::write_output(*pde, cli_input, initial_condition,
-                         static_cast<prec>(0.0), 0, "asgard_wavelet");
+                         static_cast<prec>(0.0), 0, initial_condition.size(),
+                         adaptive_grid.get_table(), "asgard_wavelet");
   }
   if (cli_input.get_realspace_output_freq() > 0)
   {
     asgard::write_output(*pde, cli_input, real_space, static_cast<prec>(0.0), 0,
+                         initial_condition.size(), adaptive_grid.get_table(),
                          "asgard_real");
   }
 #endif
@@ -230,7 +256,7 @@ int main(int argc, char **argv)
 
   asgard::matrix_list<prec> operator_matrices;
 
-  for (auto i = 0; i < opts.num_time_steps; ++i)
+  for (auto i = start_step; i < opts.num_time_steps; ++i)
   {
     // take a time advance step
     auto const time          = (i + 1) * pde->get_dt();
@@ -258,7 +284,7 @@ int main(int argc, char **argv)
       // get analytic solution at time(step+1)
       auto const analytic_solution = sum_separable_funcs(
           pde->exact_vector_funcs, pde->get_dimensions(), adaptive_grid,
-          transformer, degree, time + pde->get_dt());
+          transformer, degree, time);
 
       // calculate root mean squared error
       auto const diff = f_val - analytic_solution;
@@ -266,8 +292,7 @@ int main(int argc, char **argv)
         asgard::fk::vector<prec> squared(diff);
         std::transform(squared.begin(), squared.end(), squared.begin(),
                        [](prec const &elem) { return elem * elem; });
-        auto const mean = std::accumulate(squared.begin(), squared.end(), 0.0) /
-                          squared.size();
+        auto const mean = std::accumulate(squared.begin(), squared.end(), 0.0);
         return std::sqrt(mean);
       }();
       auto const relative_error =
@@ -280,6 +305,7 @@ int main(int argc, char **argv)
         asgard::node_out() << "Errors for local rank: " << j << '\n';
         asgard::node_out() << "RMSE (numeric-analytic) [wavelet]: "
                            << rmse_errors(j) << '\n';
+        asgard::node_out() << "L2: " << time << " " << rmse_errors(j) << "\n";                           
         asgard::node_out()
             << "Relative difference (numeric-analytic) [wavelet]: "
             << relative_errors(j) << " %" << '\n';
@@ -309,9 +335,11 @@ int main(int argc, char **argv)
     if (opts.should_output_realspace(i) || opts.should_plot(i))
     {
       // resize transform workspaces if grid size changed due to adaptivity
+      dense_size          = asgard::dense_space_size(*pde);
       auto transform_wksp = asgard::update_transform_workspace<prec>(
           dense_size, workspace, tmp_workspace);
-      real_space.resize(dense_size);
+      // real_space.resize(dense_size);
+      real_space = asgard::fk::vector<prec>(dense_size);
 
       asgard::wavelet_to_realspace<prec>(*pde, f_val, adaptive_grid.get_table(),
                                          transformer, transform_wksp,
@@ -323,12 +351,25 @@ int main(int argc, char **argv)
 #ifdef ASGARD_IO_HIGHFIVE
     if (opts.should_output_wavelet(i))
     {
-      asgard::write_output(*pde, cli_input, f_val, time, i + 1,
-                           "asgard_wavelet");
+      asgard::write_output(*pde, cli_input, f_val, time, i + 1, f_val.size(),
+                           adaptive_grid.get_table(), "asgard_wavelet");
+
+      if (pde->has_analytic_soln)
+      {
+        // get analytic solution at time(step+1)
+        auto const analytic_solution =
+            sum_separable_funcs(pde->exact_vector_funcs, pde->get_dimensions(),
+                                adaptive_grid, transformer, degree, time);
+
+        asgard::write_output(*pde, cli_input, analytic_solution, time, i + 1,
+                             analytic_solution.size(),
+                             adaptive_grid.get_table(), "asgard_analytic");
+      }
     }
     if (opts.should_output_realspace(i))
     {
       asgard::write_output(*pde, cli_input, real_space, time, i + 1,
+                           f_val.size(), adaptive_grid.get_table(),
                            "asgard_real");
     }
 #endif

@@ -1,6 +1,8 @@
 #include "moment.hpp"
 #include "basis.hpp"
 #include "elements.hpp"
+#include "sparse.hpp"
+#include "tools.hpp"
 #include "transformations.hpp"
 
 namespace asgard
@@ -20,6 +22,7 @@ void moment<P>::createFlist(PDE<P> const &pde, options const &opts)
   auto const &dims     = pde.get_dimensions();
   std::size_t num_dims = dims.size();
 
+  this->fList.clear();
   this->fList.resize(num_md_funcs);
 
   basis::wavelet_transform<P, resource::host> const transformer(opts, pde);
@@ -38,19 +41,20 @@ void moment<P>::createFlist(PDE<P> const &pde, options const &opts)
 // Actually contstructs the moment vector using fList.
 // Calculate only if adapt is true or the vector field is empty
 template<typename P>
-void moment<P>::createMomentVector(PDE<P> const &pde, parser const &opts,
+void moment<P>::createMomentVector(PDE<P> const &pde, options const &opts,
                                    elements::table const &hash_table)
 {
   // check that fList has been constructed
   expect(this->fList.size() > 0);
 
-  if (this->vector.empty() || opts.do_adapt_levels())
+  if (this->vector.empty() || opts.do_adapt_levels)
   {
     distribution_plan const plan = get_plan(get_num_ranks(), hash_table);
     auto rank                    = get_rank();
     int const degree             = pde.get_dimensions()[0].get_degree();
     auto tmp = combine_dimensions(degree, hash_table, plan.at(rank).row_start,
                                   plan.at(rank).row_stop, this->fList[0]);
+    this->vector = fk::vector<P>();
     this->vector.resize(tmp.size());
     this->vector      = std::move(tmp);
     auto num_md_funcs = md_funcs.size();
@@ -92,6 +96,7 @@ template<typename P>
 void moment<P>::createMomentReducedMatrix(PDE<P> const &pde,
                                           elements::table const &hash_table)
 {
+  tools::timer.start("createMomentMatrix");
   switch (pde.num_dims)
   {
   case 2:
@@ -107,6 +112,7 @@ void moment<P>::createMomentReducedMatrix(PDE<P> const &pde,
     throw std::runtime_error(
         "unsupported number of dimensions with createMomentReducedMatrix");
   }
+  tools::timer.stop("createMomentMatrix");
 }
 
 template<typename P>
@@ -120,6 +126,8 @@ void moment<P>::createMomentReducedMatrix_nd(PDE<P> const &pde,
   int const x_dim      = 0; // hardcoded for now, needs to change
   int const v_dim_1    = 1;
 
+  P constexpr tol = 1.0e-10;
+
   expect(static_cast<int>(this->fList.size()) > moment_idx);
   expect(this->fList[moment_idx].size() >= nvdim);
   auto g_vec_1 = this->fList[moment_idx][v_dim_1];
@@ -128,10 +136,12 @@ void moment<P>::createMomentReducedMatrix_nd(PDE<P> const &pde,
   fk::vector<P> g_vec_2, g_vec_3;
   if (nvdim >= 2)
   {
-    g_vec_2 = this->fList[moment_idx][2];
+    g_vec_2.resize(this->fList[moment_idx][2].size()) =
+        this->fList[moment_idx][2];
     if (nvdim >= 3)
     {
-      g_vec_3 = this->fList[moment_idx][3];
+      g_vec_3.resize(this->fList[moment_idx][3].size()) =
+          this->fList[moment_idx][3];
     }
   }
 
@@ -143,7 +153,7 @@ void moment<P>::createMomentReducedMatrix_nd(PDE<P> const &pde,
       static_cast<int>(std::pow(2, pde.get_dimensions()[x_dim].get_level())) *
       pde.get_dimensions()[x_dim].get_degree();
 
-  this->moment_matrix.clear_and_resize(rows, n);
+  std::multimap<int, dense_item<P>> moment_mat;
 
   int const deg = pde.get_dimensions()[v_dim_1].get_degree();
 
@@ -163,8 +173,12 @@ void moment<P>::createMomentReducedMatrix_nd(PDE<P> const &pde,
         {
           // "2D" case (v_dim = 1)
           int const ind_j = i * static_cast<int>(std::pow(deg, 2)) + j * deg;
-          moment_matrix(ind_i, ind_j + vdeg1) =
-              g_vec_1(elem_indices(1) * deg + vdeg1);
+          P elem          = g_vec_1(elem_indices(1) * deg + vdeg1);
+          if (elem > tol)
+          {
+            moment_mat.insert(
+                {ind_i, dense_item<P>{ind_i, ind_j + vdeg1, elem}});
+          }
         }
         else
         {
@@ -176,9 +190,12 @@ void moment<P>::createMomentReducedMatrix_nd(PDE<P> const &pde,
               int const ind_j = i * static_cast<int>(std::pow(deg, 3)) +
                                 j * static_cast<int>(std::pow(deg, 2)) +
                                 deg * vdeg1 + vdeg2;
-              moment_matrix(ind_i, ind_j) =
-                  g_vec_1(elem_indices(1) * deg + vdeg1) *
-                  g_vec_2(elem_indices(2) * deg + vdeg2);
+              P elem = g_vec_1(elem_indices(1) * deg + vdeg1) *
+                       g_vec_2(elem_indices(2) * deg + vdeg2);
+              if (elem > tol)
+              {
+                moment_mat.insert({ind_i, dense_item<P>{ind_i, ind_j, elem}});
+              }
             }
             else if (nvdim == 3)
             {
@@ -189,10 +206,13 @@ void moment<P>::createMomentReducedMatrix_nd(PDE<P> const &pde,
                                   j * static_cast<int>(std::pow(deg, 3)) +
                                   static_cast<int>(std::pow(deg, 2)) * vdeg1 +
                                   vdeg2 * deg + vdeg3;
-                moment_matrix(ind_i, ind_j) =
-                    g_vec_1(elem_indices(1) * deg + vdeg1) *
-                    g_vec_2(elem_indices(2) * deg + vdeg2) *
-                    g_vec_3(elem_indices(3) * deg + vdeg3);
+                P elem = g_vec_1(elem_indices(1) * deg + vdeg1) *
+                         g_vec_2(elem_indices(2) * deg + vdeg2) *
+                         g_vec_3(elem_indices(3) * deg + vdeg3);
+                if (elem > tol)
+                {
+                  moment_mat.insert({ind_i, dense_item<P>{ind_i, ind_j, elem}});
+                }
               }
             }
           }
@@ -200,6 +220,18 @@ void moment<P>::createMomentReducedMatrix_nd(PDE<P> const &pde,
       }
     }
   }
+
+  std::cout << " -- moment_mat map size = " << moment_mat.size() << "\n";
+
+  // create a sparse version of this matrix and put it on the GPU
+  //this->sparse_mat =
+  //    fk::sparse<P, mem_type::owner, resource::host>(this->moment_matrix)
+  //        .clone_onto_device();
+
+  this->sparse_mat =
+      fk::sparse<P, mem_type::owner, resource::host>(moment_mat, n, rows)
+          .clone_onto_device();
+  std::cout << this->sparse_mat.sp_size() << "\n";
 }
 
 template<typename P>
@@ -210,6 +242,21 @@ fk::vector<P> &moment<P>::create_realspace_moment(
 {
   this->realspace.resize(wave.size());
   wavelet_to_realspace<P>(pde_1d, wave, table, transformer, workspace,
+                          this->realspace);
+  return this->realspace;
+}
+
+template<typename P>
+fk::vector<P> &moment<P>::create_realspace_moment(
+    PDE<P> const &pde_1d,
+    fk::vector<P, mem_type::owner, resource::device> &wave,
+    elements::table const &table,
+    basis::wavelet_transform<P, resource::host> const &transformer,
+    std::array<fk::vector<P, mem_type::view, resource::host>, 2> &workspace)
+{
+  fk::vector<P> wave_host = wave.clone_onto_host();
+  this->realspace.resize(wave_host.size());
+  wavelet_to_realspace<P>(pde_1d, wave_host, table, transformer, workspace,
                           this->realspace);
   return this->realspace;
 }

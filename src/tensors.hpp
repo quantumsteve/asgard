@@ -289,6 +289,10 @@ public:
   vector<P, mem, resrc> &
   transfer_from(vector<P, omem, resource::device> const &);
 
+  // directly update vector from device raw ptr
+  template<resource r_ = resrc, typename = enable_for_device<r_>>
+  vector<P, mem_type::owner, resource::device> &update_from(P *);
+
   /*! Copy data out of std::vector
    *  \param other input data
    *  \return ASGarD vector
@@ -620,6 +624,10 @@ public:
   template<mem_type omem, resource r_ = resrc, typename = enable_for_host<r_>>
   matrix<P, mem, resrc> &
   transfer_from(matrix<P, omem, resource::device> const &);
+
+  // directly update matrix from device raw ptr
+  template<resource r_ = resrc, typename = enable_for_device<r_>>
+  matrix<P, mem_type::owner, resource::device> &update_from(P *);
 
   // move constructor/assign
   matrix(matrix<P, mem, resrc> &&);
@@ -1143,6 +1151,21 @@ fk::vector<P, mem, resrc> &fk::vector<P, mem, resrc>::transfer_from(
 {
   expect(a.size() == size());
   copy_vector(*this, a);
+  return *this;
+}
+
+// update device vector directly from device raw ptr
+template<typename P, mem_type mem, resource resrc>
+template<resource, typename>
+fk::vector<P, mem_type::owner, resource::device> &
+fk::vector<P, mem, resrc>::update_from(P *x)
+{
+  expect(x);
+#ifdef ASGARD_USE_CUDA
+  auto const success =
+      cudaMemcpy(data_, x, size_ * sizeof(P), cudaMemcpyDeviceToDevice);
+  expect(success == cudaSuccess);
+#endif
   return *this;
 }
 
@@ -1899,6 +1922,21 @@ fk::matrix<P, mem, resrc> &fk::matrix<P, mem, resrc>::transfer_from(
   expect(a.nrows() == nrows());
   expect(a.ncols() == ncols());
   copy_matrix(*this, a);
+  return *this;
+}
+
+template<typename P, mem_type mem, resource resrc>
+template<resource, typename>
+fk::matrix<P, mem_type::owner, resource::device> &
+fk::matrix<P, mem, resrc>::update_from(P *x)
+{
+  expect(x);
+#ifdef ASGARD_USE_CUDA
+  auto const success = cudaMemcpy2D(
+      this->data(), this->stride() * sizeof(P), x, this->stride() * sizeof(P),
+      this->nrows() * sizeof(P), this->ncols(), cudaMemcpyDeviceToDevice);
+  expect(success == 0);
+#endif
   return *this;
 }
 

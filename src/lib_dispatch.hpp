@@ -13,7 +13,7 @@ enum class resource
 // -- precision/execution resource wrapper for blas --
 namespace lib_dispatch
 {
-void initialize_libraries(int const local_rank);
+void initialize_libraries(int const local_rank, bool const ignore_rank = false);
 
 template<resource resrc = resource::host, typename P>
 void rotg(P *a, P *b, P *c, P *s);
@@ -77,5 +77,11 @@ template<typename P>
 void scalapack_getrs(char *trans, int *n, int *nrhs, P const *A, int *descA,
                      int const *ipiv, P *b, int *descB, int *info);
 #endif
+
+template<typename P>
+void sparse_gemv(char const *trans, int *rows, int *cols, int *nnz,
+                 const int *offsets, const int *columns, const P *A, P *alpha, const P *x, P *beta,
+                 const P *y, resource const resrc = resource::device);
+
 } // namespace lib_dispatch
 } // namespace asgard

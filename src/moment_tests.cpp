@@ -87,7 +87,7 @@ TEMPLATE_TEST_CASE("CreateMomentReducedMatrix", "[moments]", test_precs)
   for (size_t i = 0; i < moments.size(); ++i)
   {
     moments[i].createFlist(*pde, opts);
-    moments[i].createMomentVector(*pde, parse, check);
+    moments[i].createMomentVector(*pde, opts, check);
     moments[i].createMomentReducedMatrix(*pde, check);
 
     auto const gold_filename =
@@ -96,7 +96,9 @@ TEMPLATE_TEST_CASE("CreateMomentReducedMatrix", "[moments]", test_precs)
     auto const gold_moment_matrix =
         read_matrix_from_txt_file<TestType>(gold_filename);
 
-    rmse_comparison(gold_moment_matrix, moments[i].get_moment_matrix(),
-                    tol_factor);
+    rmse_comparison(
+        gold_moment_matrix,
+        moments[i].get_moment_matrix_dev().clone_onto_host().to_dense(),
+        tol_factor);
   }
 }
