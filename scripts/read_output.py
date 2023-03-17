@@ -1,4 +1,4 @@
-#!/bin/env python
+#!/bin/env python3
 
 import os
 import sys
@@ -24,25 +24,25 @@ def plot_from_file(filename, dataset, fig, ax = plt):
     tmp = tmp.reshape((len(nodes0),len(nodes1),len(nodes2))).transpose();
 
     fn = RegularGridInterpolator((nodes0,nodes1,nodes2), tmp)
-
-    r = 0.1
-    a_theta = np.linspace(0.0, np.pi, 101)
-    a_phi = np.linspace(0.0, 2.0 * np.pi, 101)
+    num_pts = 101
+    r = 0.5
+    a_theta = np.linspace(0.0, np.pi, num_pts)
+    a_phi = np.linspace(0.0, 2.0 * np.pi, num_pts)
 
     result = []
     for i,theta in enumerate(a_theta):
         for j,phi in enumerate(a_phi):
-            xx = r*np.sin(theta)*np.cos(phi)
-            yy = r*np.sin(theta)*np.sin(phi)
-            zz = r*np.cos(theta)
+            xx = 1. + r*np.sin(theta)*np.cos(phi)
+            yy = 1. + r*np.sin(theta)*np.sin(phi)
+            zz = 1. + r*np.cos(theta)
             result.append(fn([xx,yy,zz])[0])
-            #print(i,j)
-            #print(fn([xx,yy,zz]))
-    #print(result)
+            assert(np.abs((xx - 1.0)**2 + (yy-1.0)**2 + (zz-1.0)**2 - r**2) < 1e-5)
     print(np.min(result),np.max(result))
-    result = np.array(result).reshape((101,101))
+    result = np.array(result).reshape((num_pts,num_pts))
     cs = ax.contourf(a_theta, a_phi, result)
-    ax.set_title("t = {}".format(data_file['time'][()]))
+    ax.set_title("Lenard-Bernstein 3D, r = {}, t = {}".format(r,data_file['time'][()]))
+    ax.set_xlabel(r"$\theta$")
+    ax.set_ylabel(r"$\phi$");
     fig.colorbar(cs)
 
 if __name__ == '__main__':
@@ -56,5 +56,5 @@ if __name__ == '__main__':
 
     fig, ax = plt.subplots()
     plot_from_file(input_fname, 'asgard', fig, ax)
+    plt.savefig('lenard_bernstein_3_r_0p5_t_1p0.png', dpi=600)
 
-    plt.show()
