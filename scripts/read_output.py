@@ -38,12 +38,12 @@ def plot_from_file(filename, dataset, fig, ax = plt):
             result.append(fn([xx,yy,zz])[0])
             assert(np.abs((xx - 1.0)**2 + (yy-1.0)**2 + (zz-1.0)**2 - r**2) < 1e-5)
     print(np.min(result),np.max(result))
-    result = np.array(result).reshape((num_pts,num_pts))
-    cs = ax.contourf(a_theta, a_phi, result)
-    ax.set_title("Lenard-Bernstein 3D, r = {}, t = {}".format(r,data_file['time'][()]))
-    ax.set_xlabel(r"$\theta$")
-    ax.set_ylabel(r"$\phi$");
-    fig.colorbar(cs)
+    result = np.array(result).reshape((num_pts,num_pts)) - 0.055504468907057014
+    cs = ax.contourf(a_theta/np.pi, a_phi/np.pi, result)
+    ax.set_title("L-B 3D, r = {}, full grid, d=4, l=4".format(r))
+    ax.set_xlabel(r"$\frac{\theta}{\pi}$")
+    ax.set_ylabel(r"$\frac{\phi}{\pi}$");
+    fig.colorbar(cs, format='%.0e')
 
 if __name__ == '__main__':
     if len(sys.argv) <= 1:
@@ -56,5 +56,5 @@ if __name__ == '__main__':
 
     fig, ax = plt.subplots()
     plot_from_file(input_fname, 'asgard', fig, ax)
-    plt.savefig('lenard_bernstein_3_r_0p5_t_1p0.png', dpi=600)
+    plt.savefig('lenard_bernstein_3_deviation.png', dpi=600)
 

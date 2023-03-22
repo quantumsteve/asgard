@@ -41,7 +41,7 @@ def plot_from_file(filename, dataset, fig, ax = plt):
     num_pts = 101
     r_min = 0.0
     r_max = 4.0
-    rr = np.linspace(0.0,4.0,num_pts)
+    rr = [0.5]#; np.linspace(0.0,4.0,num_pts)
 
     th = 1.0;
     prefactor = 1.0 / np.sqrt(2. * np.pi)
@@ -50,8 +50,8 @@ def plot_from_file(filename, dataset, fig, ax = plt):
     for r in rr:
         f = interpolator(fn,r)
         #print(r,f.evaluate(np.pi,np.pi/2.))
-        y, abserr = dblquad(f.evaluate, 0, np.pi, 0, 2.*np.pi, epsabs=1.e-2)
-        print(r, y, abserr)
+        y, abserr = dblquad(f.evaluate, 0, np.pi, 0, 2.*np.pi, epsrel=1.e-3, epsabs=1.e-4)
+        #print(r, y, abserr)
         theta = 0.
         phi = 0.
         xx = 1. + r*np.sin(theta)*np.cos(phi)
@@ -60,7 +60,11 @@ def plot_from_file(filename, dataset, fig, ax = plt):
         exact = prefactor * np.exp(-1. * (xx - 1.)**2 / (2.0 * th))
         exact *= prefactor * np.exp(-1. * (yy - 1.)**2 / (2.0 * th))
         exact *= prefactor * np.exp(-1. * (zz - 1.)**2 / (2.0 * th))
-        average_value.append(np.abs(y/(4.0*np.pi) - exact))
+        diff = np.abs(y/(4.0*np.pi) - exact)
+        #print(r,diff,abserr/(4.0*np.pi))
+        #average_value.append(diff)
+        print(y/(4.*np.pi))
+
     plt.plot(rr,average_value)
     
     ax.set_title("Lenard-Bernstein 3D, t = {}".format(data_file['time'][()]))
