@@ -37,14 +37,14 @@ def plot_from_file(filename, dataset, fig, ax = plt):
     tmp = tmp.reshape((len(nodes0),len(nodes1),len(nodes2))).transpose();
 
     # full grid calculation done before we added use_full_grid to output...
-    grid_type = 'full'
+    grid_type = 'sparse'
     try:
         grid_type = data_file['grid_type'][()]
     except:
         pass
     degree = data_file['degree'][()]
     level = data_file['dim0_level'][()]
-    pde = data_file['pde'][()]
+    pde = data_file['pde'][()].decode("latin-1")
     time = data_file['time'][()]
 
     fn = RegularGridInterpolator((nodes0,nodes1,nodes2), tmp)

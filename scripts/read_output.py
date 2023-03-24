@@ -21,15 +21,14 @@ def plot_from_file(filename, dataset, fig, ax = plt):
     tmp = tmp.reshape((len(nodes0),len(nodes1),len(nodes2))).transpose();
 
     # full grid calculation done before we added use_full_grid to output...
-    grid_type = 'full'
+    grid_type = 'sparse'
     try:
         grid_type = data_file['grid_type'][()]
     except:
         pass
     degree = data_file['degree'][()]
     level = data_file['dim0_level'][()]
-    pde = data_file['pde'][()]
-
+    pde = data_file['pde'][()].decode("latin-1")
     fn = RegularGridInterpolator((nodes0,nodes1,nodes2), tmp)
     num_pts = 401
     r = 0.5
@@ -45,13 +44,17 @@ def plot_from_file(filename, dataset, fig, ax = plt):
             result.append(fn([xx,yy,zz])[0])
             assert(np.abs((xx - 1.0)**2 + (yy-1.0)**2 + (zz-1.0)**2 - r**2) < 1e-5)
     print(np.min(result),np.max(result))
-    result = np.array(result).reshape((num_pts,num_pts)) - 0.055504468907057014
+    print((np.max(result) + np.min(result)) /2.)
+
+    result = np.array(result).reshape((num_pts,num_pts)) - (np.max(result) + np.min(result)) /2. #- 0.055504468907057014
     cs = ax.pcolormesh(a_theta/np.pi, a_phi/np.pi, result)
     ax.set_title("{}, r = {}, {} grid, d={}, l={}".format(pde,r, grid_type, degree, level))
     ax.set_xlabel(r"$\frac{\theta}{\pi}$")
-    ax.set_ylabel(r"$\frac{\phi}{\pi}$");
+    ax.set_ylabel(r"$\frac{\phi}{\pi}$")
+    cs.set_clim(-0.0003,0.0003)
     fig.colorbar(cs, format='%.0e')
-    plt.savefig('{}_r_{}_d_{}_l_{}_{}_grid_error.png'.format(pde,r,degree,level,grid_type), dpi=600)
+    filename = '{}_r_{}_d_{}_l_{}_{}_grid_error.png'.format(pde,r,degree,level,grid_type)
+    plt.savefig(filename, dpi=600)
 
 
 if __name__ == '__main__':
