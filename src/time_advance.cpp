@@ -136,7 +136,7 @@ adaptive_advance(method const step_method, PDE<P> &pde,
 // vector x. on exit, the next solution vector is stored in x.
 template<typename P>
 fk::vector<P>
-explicit_advance(PDE<P> const &pde,
+explicit_advance(PDE<P> &pde,
                  adapt::distributed_grid<P> const &adaptive_grid,
                  basis::wavelet_transform<P, resource::host> const &transformer,
                  options const &program_opts,
@@ -178,6 +178,7 @@ explicit_advance(PDE<P> const &pde,
   // FIXME eventually want to extract RK step into function
   // -- RK step 1
   auto const apply_id = tools::timer.start("kronmult_setup");
+  generate_all_coefficients<P>(pde, transformer);
   auto fx             = kronmult::execute(pde, table, program_opts, grid, x);
 
   tools::timer.stop(apply_id);
@@ -692,7 +693,7 @@ template fk::vector<float> adaptive_advance(
     bool const update_system);
 
 template fk::vector<double> explicit_advance(
-    PDE<double> const &pde,
+    PDE<double> &pde,
     adapt::distributed_grid<double> const &adaptive_grid,
     basis::wavelet_transform<double, resource::host> const &transformer,
     options const &program_opts,
@@ -701,7 +702,7 @@ template fk::vector<double> explicit_advance(
     fk::vector<double> const &x, double const time);
 
 template fk::vector<float> explicit_advance(
-    PDE<float> const &pde, adapt::distributed_grid<float> const &adaptive_grid,
+    PDE<float> &pde, adapt::distributed_grid<float> const &adaptive_grid,
     basis::wavelet_transform<float, resource::host> const &transformer,
     options const &program_opts,
     std::array<boundary_conditions::unscaled_bc_parts<float>, 2> const
