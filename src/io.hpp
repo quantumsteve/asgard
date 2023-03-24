@@ -79,6 +79,8 @@ void write_output(PDE<P> const &pde, parser const &cli_input,
   H5Easy::dump(file, "time", time);
   H5Easy::dump(file, "ndims", pde.num_dims);
   H5Easy::dump(file, "max_level", pde.max_level);
+  std::string grid_type = cli_input.using_full_grid() ? "full" : "sparse";
+  H5Easy::dump(file, "grid_type", grid_type);
   auto const dims = pde.get_dimensions();
   for (size_t dim = 0; dim < dims.size(); ++dim)
   {

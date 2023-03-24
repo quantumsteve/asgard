@@ -36,21 +36,36 @@ def plot_from_file(filename, dataset, fig, ax = plt):
     tmp = data_file['soln'][()]
     tmp = tmp.reshape((len(nodes0),len(nodes1),len(nodes2))).transpose();
 
+    # full grid calculation done before we added use_full_grid to output...
+    grid_type = 'full'
+    try:
+        grid_type = data_file['grid_type'][()]
+    except:
+        pass
+    degree = data_file['degree'][()]
+    level = data_file['dim0_level'][()]
+    pde = data_file['pde'][()]
+    time = data_file['time'][()]
+
     fn = RegularGridInterpolator((nodes0,nodes1,nodes2), tmp)
 
-    num_pts = 101
+    num_pts = 51
     r_min = 0.0
     r_max = 4.0
-    rr = [0.5]#; np.linspace(0.0,4.0,num_pts)
+    rr = np.linspace(0.0,4.0,num_pts)
 
     th = 1.0;
     prefactor = 1.0 / np.sqrt(2. * np.pi)
 
+    exact0 = prefactor
+    exact0 *= prefactor
+    exact0 *= prefactor
+
     average_value = []
     for r in rr:
-        f = interpolator(fn,r)
+        f = interpolator(fn, r)
         #print(r,f.evaluate(np.pi,np.pi/2.))
-        y, abserr = dblquad(f.evaluate, 0, np.pi, 0, 2.*np.pi, epsrel=1.e-3, epsabs=1.e-4)
+        y, abserr = dblquad(f.evaluate, 0, np.pi, 0, 2.*np.pi, epsrel=1.e-2, epsabs=1.e-3)
         #print(r, y, abserr)
         theta = 0.
         phi = 0.
@@ -60,17 +75,19 @@ def plot_from_file(filename, dataset, fig, ax = plt):
         exact = prefactor * np.exp(-1. * (xx - 1.)**2 / (2.0 * th))
         exact *= prefactor * np.exp(-1. * (yy - 1.)**2 / (2.0 * th))
         exact *= prefactor * np.exp(-1. * (zz - 1.)**2 / (2.0 * th))
-        diff = np.abs(y/(4.0*np.pi) - exact)
-        #print(r,diff,abserr/(4.0*np.pi))
-        #average_value.append(diff)
-        print(y/(4.*np.pi))
+        diff = np.abs(y/(4.0*np.pi) - exact)/exact0
+        print(r,diff,abserr/(4.0*np.pi))
+        average_value.append(diff)
+        #print(y/(4.*np.pi))
 
     plt.plot(rr,average_value)
     
-    ax.set_title("Lenard-Bernstein 3D, t = {}".format(data_file['time'][()]))
+    ax.set_title("{}, {} grid, t={}, d={}, l={}".format(pde, grid_type, time, degree, level))
+
     ax.set_xlim(r_min,r_max)
     ax.set_xlabel(r"R")
     ax.set_ylabel(r"U(R,$\theta$,$\phi$)");
+    plt.savefig('{}_t_{}_d_{}_l_{}_{}_integrated_error.png'.format(pde,time,degree,level,grid_type), dpi=600)
 
 if __name__ == '__main__':
     if len(sys.argv) <= 1:
