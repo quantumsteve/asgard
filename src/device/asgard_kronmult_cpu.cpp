@@ -88,7 +88,8 @@ void run_cpu_variant(T const *const pA[], int const lda, T const *const pX[],
         }
         else if constexpr (n >= 3)
         {
-          T W[n][n] = {{{0}}}, Y[n][n] = {{{0}}};
+          alignas(32) T W[n][n] = {{{0}}};
+          alignas(32) T Y[n][n] = {{{0}}};
           for (int j = 0; j < n; j++)
             for (int s = 0; s < n; s++)
               #pragma omp simd
