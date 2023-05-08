@@ -110,7 +110,7 @@ endif()
 
 if (ASGARD_RECOMMENDED_DEFAULTS)
   # add compiler flags we always want to use
-  string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -Wpedantic -Wshadow")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -Wall -Wextra -Wpedantic -Wshadow" CACHE STRING "compiler flags" FORCE)
 endif()
 
 # add scripts directory location
