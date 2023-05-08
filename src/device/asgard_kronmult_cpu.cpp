@@ -195,7 +195,7 @@ void run_cpu_variant(T const *const pA[], int const lda, T const *const pX[],
       {
         T W[n][n][n][n][n] = {{{{{{0}}}}}}, Y[n][n][n][n][n] = {{{{{{0}}}}}};
         for (int j = 0; j < n; j++)
-          for (int s = 0; s < s; s++)
+          for (int s = 0; s < n; s++)
             for (int v = 0; v < n; v++)
               for (int p = 0; p < n; p++)
                 for (int l = 0; l < n; l++)
