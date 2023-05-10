@@ -127,6 +127,8 @@ if(NOT ASGARD_IO_HIGHFIVE)
   endif()
 endif()
 
+find_package(Boost REQUIRED)
+
 ###############################################################################
 ## Pull in external support as needed
 ###############################################################################
@@ -328,6 +330,7 @@ target_link_libraries (asgard_obj
                        $<$<BOOL:${LINALG_FOUND}>:LINALG::LINALG>
                        $<$<BOOL:${OpenMP_CXX_FOUND}>:OpenMP::OpenMP_CXX>
                        clara
+		       ${Boost_LIBRARIES}
                        $<$<BOOL:${ASGARD_IO_HIGHFIVE}>:highfive>
                        $<$<BOOL:${ASGARD_IO_HIGHFIVE}>:hdf5>
                        $<$<BOOL:${ASGARD_USE_MATLAB}>:${Matlab_ENGINE_LIBRARY}>

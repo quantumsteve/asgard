@@ -127,9 +127,9 @@ public:
   /*! copy constructor
    * \param other vector
    */
-  template<mem_type m_ = mem, typename = enable_for_owner<m_>,
+  template<typename A, mem_type m_ = mem, typename = enable_for_owner<m_>,
            resource r_ = resrc, typename = enable_for_host<r_>>
-  vector(std::vector<P> const &other);
+  vector(std::vector<P, A> const &other);
   /*! copy constructor
    * \param other vector
    */
@@ -856,11 +856,11 @@ allocate_device(P *&ptr, int64_t const num_elems, bool const initialize = true)
 #else
   if (initialize)
   {
-    ptr = new P[num_elems]();
+    ptr = new (std::align_val_t(64)) P[num_elems]();
   }
   else
   {
-    ptr = new P[num_elems];
+    ptr = new (std::align_val_t(64)) P[num_elems];
   }
 #endif
 }
@@ -875,7 +875,7 @@ inline void delete_device(P *const ptr)
   // returning a cudartUnloading error code.
   expect((success == cudaSuccess) || (success == cudaErrorCudartUnloading));
 #else
-  delete[] ptr;
+  ::operator delete[](ptr, std::align_val_t(64));
 #endif
 }
 
@@ -1013,7 +1013,7 @@ fk::vector<P, mem, resrc>::vector(int const size)
 
   if constexpr (resrc == resource::host)
   {
-    data_ = new P[size_]();
+    data_ = new (std::align_val_t(64)) P[size_]();
   }
   else
   {
@@ -1031,7 +1031,7 @@ fk::vector<P, mem, resrc>::vector(std::initializer_list<P> list)
 {
   if constexpr (resrc == resource::host)
   {
-    data_ = new P[size_]();
+    data_ = new (std::align_val_t(64)) P[size_]();
     std::copy(list.begin(), list.end(), data_);
   }
   else
@@ -1042,10 +1042,10 @@ fk::vector<P, mem, resrc>::vector(std::initializer_list<P> list)
 }
 
 template<typename P, mem_type mem, resource resrc>
-template<mem_type, typename, resource, typename>
-fk::vector<P, mem, resrc>::vector(std::vector<P> const &v)
-    : data_{new P[v.size()]}, size_{static_cast<int>(v.size())},
-      ref_count_{std::make_shared<int>(0)}
+template<typename A, mem_type, typename, resource, typename>
+fk::vector<P, mem, resrc>::vector(std::vector<P, A> const &v)
+    : data_{new (std::align_val_t(64)) P[v.size()]},
+      size_{static_cast<int>(v.size())}, ref_count_{std::make_shared<int>(0)}
 {
   std::copy(v.begin(), v.end(), data_);
 }
@@ -1064,7 +1064,7 @@ fk::vector<P, mem, resrc>::vector(
   {
     if constexpr (resrc == resource::host)
     {
-      data_ = new P[mat.size()]();
+      data_ = new (std::align_val_t(64)) P[mat.size()]();
       int i = 0;
       for (auto const &elem : mat)
       {
@@ -1146,7 +1146,7 @@ fk::vector<P, mem, resrc>::~vector()
 
     if constexpr (resrc == resource::host)
     {
-      delete[] data_;
+      ::operator delete[](data_, std::align_val_t(64));
     }
     else
     {
@@ -1168,7 +1168,7 @@ fk::vector<P, mem, resrc>::vector(vector<P, mem, resrc> const &a)
 
     if constexpr (resrc == resource::host)
     {
-      data_ = new P[a.size()];
+      data_ = new (std::align_val_t(64)) P[a.size()];
       std::memcpy(data_, a.data(), a.size() * sizeof(P));
     }
     else
@@ -1266,8 +1266,8 @@ fk::vector<P, mem, resrc>::operator=(vector<P, mem, resrc> &&a)
 template<typename P, mem_type mem, resource resrc>
 template<typename PP, mem_type omem, mem_type, typename, resource, typename>
 fk::vector<P, mem, resrc>::vector(vector<PP, omem> const &a)
-    : data_{new P[a.size()]}, size_{a.size()}, ref_count_{
-                                                   std::make_shared<int>(0)}
+    : data_{new (std::align_val_t(64)) P[a.size()]}, size_{a.size()},
+      ref_count_{std::make_shared<int>(0)}
 {
   for (auto i = 0; i < a.size(); ++i)
   {
@@ -1304,7 +1304,7 @@ fk::vector<P, mem, resrc>::vector(vector<P, omem, resrc> const &a)
 {
   if constexpr (resrc == resource::host)
   {
-    data_ = new P[a.size()];
+    data_ = new (std::align_val_t(64)) P[a.size()];
     std::memcpy(data_, a.data(), a.size() * sizeof(P));
   }
   else
@@ -1680,7 +1680,7 @@ fk::vector<P, mem, resrc>::resize(int const new_size)
 
   if constexpr (resrc == resource::host)
   {
-    data_ = new P[new_size]();
+    data_ = new (std::align_val_t(64)) P[new_size]();
     if (size() > 0 && new_size > 0)
     {
       if (size() < new_size)
@@ -1688,7 +1688,7 @@ fk::vector<P, mem, resrc>::resize(int const new_size)
       else
         std::memcpy(data_, old_data, new_size * sizeof(P));
     }
-    delete[] old_data;
+    ::operator delete[](old_data, std::align_val_t(64));
   }
   else
   {
@@ -1715,11 +1715,11 @@ fk::vector<P, mem, resrc>::concat(vector<P, omem> const &right)
   int const old_size = this->size();
   int const new_size = this->size() + right.size();
   P *old_data{data_};
-  data_ = new P[new_size]();
+  data_ = new (std::align_val_t(64)) P[new_size]();
   std::memcpy(data_, old_data, old_size * sizeof(P));
   std::memcpy(data(old_size), right.data(), right.size() * sizeof(P));
   size_ = new_size;
-  delete[] old_data;
+  ::operator delete[](old_data, std::align_val_t(64));
   return *this;
 }
 
@@ -1950,7 +1950,7 @@ fk::matrix<P, mem, resrc>::~matrix()
     expect(ref_count_.use_count() == 1);
     if constexpr (resrc == resource::host)
     {
-      delete[] data_;
+      ::operator delete[](data_, std::align_val_t(64));
     }
     else
     {

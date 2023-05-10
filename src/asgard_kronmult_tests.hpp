@@ -5,8 +5,14 @@
 #include "lib_dispatch.hpp"
 #include "tensors.hpp"
 
+#include <boost/align/aligned_allocator.hpp>
+
 #include <iostream>
 #include <random>
+
+template<typename T>
+using aligned_vector =
+    std::vector<T, boost::alignment::aligned_allocator<double, 64>>;
 
 using namespace asgard::kronmult;
 
@@ -20,15 +26,15 @@ struct kronmult_intputs
 {
   int num_batch, output_size;
 
-  std::vector<T> matrices;
-  std::vector<T> input_x;
-  std::vector<T> output_y;
-  std::vector<T> reference_y;
+  aligned_vector<T> matrices;
+  aligned_vector<T> input_x;
+  aligned_vector<T> output_y;
+  aligned_vector<T> reference_y;
 
   // vectors of pointers on the CPU
-  std::vector<T *> pA;
-  std::vector<T *> pX;
-  std::vector<T *> pY;
+  aligned_vector<T *> pA;
+  aligned_vector<T *> pX;
+  aligned_vector<T *> pY;
 
 #ifdef ASGARD_USE_CUDA
   // copy of the data on the GPU
@@ -51,9 +57,9 @@ struct kronmult_intputs
  * Explicitly constructs the Kronecker product of two matrices.
  */
 template<typename T>
-std::vector<T> kronecker(int m, T const A[], int n, T const B[])
+aligned_vector<T> kronecker(int m, T const A[], int n, T const B[])
 {
-  std::vector<T> result(n * n * m * m);
+  aligned_vector<T> result(n * n * m * m);
   for (int jm = 0; jm < m; jm++)
   {
     for (int jn = 0; jn < n; jn++)
@@ -78,7 +84,7 @@ template<typename T>
 void reference_kronmult_one(int dimensions, int n, T const *const pA[],
                             T const x[], T y[])
 {
-  std::vector<T> kron(pA[dimensions - 1], pA[dimensions - 1] + n * n);
+  aligned_vector<T> kron(pA[dimensions - 1], pA[dimensions - 1] + n * n);
   int total_size = n;
   for (int i = dimensions - 2; i >= 0; i--)
   {
@@ -141,18 +147,18 @@ make_kronmult_data(int dimensions, int n, int num_y, int output_length,
   for (int i = 0; i < dimensions; i++)
     num_data *= n;
 
-  std::vector<int> pointer_map((dimensions + 2) * num_batch);
+  aligned_vector<int> pointer_map((dimensions + 2) * num_batch);
 
   auto result         = std::make_unique<kronmult_intputs<T>>();
   result->num_batch   = num_batch;
   result->output_size = output_length;
-  result->matrices    = std::vector<T>(n * n * num_matrices);
-  result->input_x     = std::vector<T>(num_data * num_y);
-  result->output_y    = std::vector<T>(num_data * num_y);
-  result->reference_y = std::vector<T>(num_data * num_y);
-  result->pA          = std::vector<T *>(dimensions * num_batch);
-  result->pX          = std::vector<T *>(num_batch);
-  result->pY          = std::vector<T *>(num_batch);
+  result->matrices    = aligned_vector<T>(n * n * num_matrices);
+  result->input_x     = aligned_vector<T>(num_data * num_y);
+  result->output_y    = aligned_vector<T>(num_data * num_y);
+  result->reference_y = aligned_vector<T>(num_data * num_y);
+  result->pA          = aligned_vector<T *>(dimensions * num_batch);
+  result->pX          = aligned_vector<T *>(num_batch);
+  result->pY          = aligned_vector<T *>(num_batch);
 
   // pointer_map has 2D structure with num_batch strips of size (d+2)
   // the first entry of each strip is the input x
@@ -210,9 +216,9 @@ make_kronmult_data(int dimensions, int n, int num_y, int output_length,
   result->gpux = asgard::fk::vector<T>(result->input_x).clone_onto_device();
   result->gpum = asgard::fk::vector<T>(result->matrices).clone_onto_device();
 
-  std::vector<T *> pX(result->pX.size());
-  std::vector<T *> pY(result->pY.size());
-  std::vector<T *> pA(result->pA.size());
+  aligned_vector<T *> pX(result->pX.size());
+  aligned_vector<T *> pY(result->pY.size());
+  aligned_vector<T *> pA(result->pA.size());
 
   ip = pointer_map.begin();
   for (int i = 0; i < num_batch; i++)

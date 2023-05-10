@@ -129,9 +129,10 @@ void test_kronmult_build(PDE<P> &pde)
                    my_subgrid.row_stop, my_subgrid.col_start,
                    my_subgrid.col_stop);
 
-  P **const input_ptrs_h    = new P *[total_kronmults];
-  P **const output_ptrs_h   = new P *[total_kronmults];
-  P **const operator_ptrs_h = new P *[total_kronmults * pde.num_dims];
+  P **const input_ptrs_h  = new (std::align_val_t(64)) P *[total_kronmults];
+  P **const output_ptrs_h = new (std::align_val_t(64)) P *[total_kronmults];
+  P **const operator_ptrs_h =
+      new (std::align_val_t(64)) P *[total_kronmults * pde.num_dims];
 
   fk::copy_to_host(input_ptrs_h, input_ptrs, total_kronmults);
   fk::copy_to_host(output_ptrs_h, output_ptrs, total_kronmults);
@@ -175,9 +176,9 @@ void test_kronmult_build(PDE<P> &pde)
   fk::delete_device(output_ptrs);
   fk::delete_device(operator_ptrs);
 
-  delete[] input_ptrs_h;
-  delete[] output_ptrs_h;
-  delete[] operator_ptrs_h;
+  ::operator delete[](input_ptrs_h, std::align_val_t(64));
+  ::operator delete[](output_ptrs_h, std::align_val_t(64));
+  ::operator delete[](operator_ptrs_h, std::align_val_t(64));
 }
 
 TEMPLATE_TEST_CASE("list building kernel", "[kronmult_cuda]", float, double)

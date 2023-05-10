@@ -3,8 +3,8 @@
 
 #include "asgard_kronmult_tests.hpp"
 
-template<typename T>
-void test_almost_equal(std::vector<T> const &x, std::vector<T> const &y,
+template<typename T, typename A, typename B>
+void test_almost_equal(std::vector<T, A> const &x, std::vector<T, B> const &y,
                        int scale = 10)
 {
   rmse_comparison<T>(asgard::fk::vector<T>(x), asgard::fk::vector<T>(y),
@@ -26,14 +26,14 @@ void test_kronmult_cpu(int dimensions, int n, int num_y, int output_length,
 
 TEMPLATE_TEST_CASE("testing reference methods", "[kronecker]", float, double)
 {
-  std::vector<TestType> A    = {1, 2, 3, 4};
-  std::vector<TestType> B    = {10, 20, 30, 40};
+  aligned_vector<TestType> A = {1, 2, 3, 4};
+  aligned_vector<TestType> B = {10, 20, 30, 40};
   auto R                     = kronecker(2, A.data(), 2, B.data());
   std::vector<TestType> gold = {10, 20, 20, 40, 30, 40,  60,  80,
                                 30, 60, 40, 80, 90, 120, 120, 160};
   test_almost_equal(R, gold);
 
-  B    = std::vector<TestType>{1, 2, 3, 4, 5, 6, 7, 8, 9};
+  B    = aligned_vector<TestType>{1, 2, 3, 4, 5, 6, 7, 8, 9};
   R    = kronecker(2, A.data(), 3, B.data());
   gold = std::vector<TestType>{1,  2,  3,  2,  4,  6,  4,  5,  6,  8,  10, 12,
                                7,  8,  9,  14, 16, 18, 3,  6,  9,  4,  8,  12,
