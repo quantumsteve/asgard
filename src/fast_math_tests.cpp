@@ -726,7 +726,7 @@ TEMPLATE_TEST_CASE("other vector routines", "[fast_math]", float, double)
     REQUIRE(fm::scal(x2, test_view) == zeros);
     REQUIRE(test_own == zeros);
   }
-
+#ifdef ASGARD_USE_CUDA
   SECTION("vector scale (fm::scal), device")
   {
     if constexpr (std::is_floating_point_v<TestType>)
@@ -766,6 +766,7 @@ TEMPLATE_TEST_CASE("other vector routines", "[fast_math]", float, double)
       REQUIRE(result == zeros);
     }
   }
+#endif
 }
 
 TEMPLATE_TEST_CASE("LU Routines", "[fast_math]", float, double)

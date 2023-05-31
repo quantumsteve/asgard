@@ -27,9 +27,8 @@ P dot(int n, P const *x, int incx, P const *y, int incy);
 template<resource resrc = resource::host, typename P>
 void axpy(int n, P alpha, P const *x, int incx, P *y, int incy);
 
-template<typename P>
-void scal(int *n, P *alpha, P *x, int *incx,
-          resource const resrc = resource::host);
+template<resource resrc = resource::host, typename P>
+void scal(int n, P alpha, P *x, int incx);
 
 template<typename P>
 void gemv(char const *trans, int *m, int *n, P *alpha, P const *A, int *lda,

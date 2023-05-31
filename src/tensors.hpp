@@ -1488,7 +1488,7 @@ fk::vector<P> fk::vector<P, mem, resrc>::operator*(P const x) const
   int n     = a.size();
   P alpha   = x;
 
-  lib_dispatch::scal(&n, &alpha, a.data(), &one_i);
+  lib_dispatch::scal<resrc>(n, alpha, a.data(), one_i);
 
   return a;
 }
@@ -1522,7 +1522,7 @@ fk::vector<P, mem> &fk::vector<P, mem, resrc>::scale(P const x)
   int n     = this->size();
   P alpha   = x;
 
-  lib_dispatch::scal(&n, &alpha, this->data(), &one_i);
+  lib_dispatch::scal<resrc>(n, alpha, this->data(), one_i);
 
   return *this;
 }

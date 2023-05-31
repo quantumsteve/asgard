@@ -538,10 +538,11 @@ TEMPLATE_TEST_CASE(
     int n          = x.size();
     TestType alpha = scale;
     int incx       = 1;
-    lib_dispatch::scal(&n, &alpha, test.data(), &incx);
+    lib_dispatch::scal(n, alpha, test.data(), incx);
     REQUIRE(test == x_tripled);
   }
 
+#ifdef ASGARD_USE_CUDA
   SECTION("lib_dispatch::scal - inc = 1, device")
   {
     if constexpr (std::is_floating_point_v<TestType>)
@@ -552,13 +553,14 @@ TEMPLATE_TEST_CASE(
       TestType alpha = scale;
       int incx       = 1;
 
-      lib_dispatch::scal(&n, &alpha, test.data(), &incx, resource::device);
+      lib_dispatch::scal<resource::device>(n, alpha, test.data(), incx);
 
       fk::vector<TestType, mem_type::owner, resource::host> const test_h(
           test.clone_onto_host());
       REQUIRE(test_h == x_tripled);
     }
   }
+#endif
   SECTION("lib_dispatch::scal - incx =/= 1")
   {
     fk::vector<TestType> test{1, 0, 2, 0, 3, 0, 4, 0, 5};
@@ -567,11 +569,11 @@ TEMPLATE_TEST_CASE(
     TestType alpha = scale;
     int incx       = 2;
 
-    lib_dispatch::scal(&n, &alpha, test.data(), &incx);
+    lib_dispatch::scal(n, alpha, test.data(), incx);
 
     REQUIRE(test == gold);
   }
-
+#ifdef ASGARD_USE_CUDA
   SECTION("lib_dispatch::scal - incx =/= 1, device")
   {
     if constexpr (std::is_floating_point_v<TestType>)
@@ -583,14 +585,14 @@ TEMPLATE_TEST_CASE(
       TestType alpha = scale;
       int incx       = 2;
 
-      lib_dispatch::scal(&n, &alpha, test.data(), &incx, resource::device);
+      lib_dispatch::scal<resource::device>(n, alpha, test.data(), incx);
 
       fk::vector<TestType, mem_type::owner, resource::host> const test_h(
           test.clone_onto_host());
       REQUIRE(test_h == gold);
     }
   }
-
+#endif
   SECTION("lib_dispatch::copy - inc = 1")
   {
     fk::vector<TestType> const x_test(x);

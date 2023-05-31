@@ -420,52 +420,48 @@ void axpy(int n, P alpha, const P *x, int incx, P *y, int incy)
   }
 }
 
-template<typename P>
-void scal(int *n, P *alpha, P *x, int *incx, resource const resrc)
+template<resource resrc, typename P>
+void scal(int n, P alpha, P *x, int incx)
 {
-  expect(alpha);
   expect(x);
-  expect(n && *n >= 0);
-  expect(incx && *incx >= 0);
+  expect(n >= 0);
+  expect(incx >= 0);
 
-  if (resrc == resource::device)
+  if constexpr (resrc == resource::device)
   {
     // device-specific specialization if needed
 #ifdef ASGARD_USE_CUDA
-    // no non-fp blas on device
-    expect(std::is_floating_point_v<P>);
-
     // instantiated for these two fp types
-    if constexpr (std::is_same<P, double>::value)
+    if constexpr (std::is_same_v<P, double>)
     {
-      auto const success =
-          cublasDscal(device.get_handle(), *n, alpha, x, *incx);
+      auto const success = cublasDscal(device.get_handle(), n, &alpha, x, incx);
       expect(success == 0);
     }
-    else if constexpr (std::is_same<P, float>::value)
+    else if constexpr (std::is_same_v<P, float>)
     {
-      auto const success =
-          cublasSscal(device.get_handle(), *n, alpha, x, *incx);
+      auto const success = cublasSscal(device.get_handle(), n, &alpha, x, incx);
       expect(success == 0);
     }
     return;
 #endif
   }
-
-  // default execution on the host for any resource
-  if constexpr (std::is_same<P, double>::value)
+  else if constexpr (resrc == resource::host)
   {
-    cblas_dscal(*n, *alpha, x, *incx);
-  }
-  else if constexpr (std::is_same<P, float>::value)
-  {
-    cblas_sscal(*n, *alpha, x, *incx);
-  }
-  else
-  {
-    for (int i = 0; i < *n; ++i)
+    // default execution on the host for any resource
+    if constexpr (std::is_same<P, double>::value)
     {
-      x[i * (*incx)] *= *alpha;
+      cblas_dscal(n, alpha, x, incx);
+    }
+    else if constexpr (std::is_same<P, float>::value)
+    {
+      cblas_sscal(n, alpha, x, incx);
+    }
+    else
+    {
+      for (int i = 0; i < n; ++i)
+      {
+        x[i * incx] *= alpha;
+      }
     }
   }
 }
@@ -1235,6 +1231,10 @@ template void axpy<resource::device, float>(int n, float alpha, float const *x,
 template void axpy<resource::device, double>(int n, double alpha,
                                              double const *x, int incx,
                                              double *y, int incy);
+template void
+scal<resource::device, float>(int n, float alpha, float *x, int incx);
+template void
+scal<resource::device, double>(int n, double alpha, double *x, int incx);
 #endif
 
 template void axpy<resource::host, float>(int n, float alpha, float const *x,
@@ -1243,10 +1243,10 @@ template void axpy<resource::host, double>(int n, double alpha, double const *x,
                                            int incx, double *y, int incy);
 
 template void
-scal(int *n, float *alpha, float *x, int *incx, resource const resrc);
+scal<resource::host, float>(int n, float alpha, float *x, int incx);
 template void
-scal(int *n, double *alpha, double *x, int *incx, resource const resrc);
-template void scal(int *n, int *alpha, int *x, int *incx, resource const resrc);
+scal<resource::host, double>(int n, double alpha, double *x, int incx);
+template void scal<resource::host, int>(int n, int alpha, int *x, int incx);
 
 template void gemv(char const *trans, int *m, int *n, float *alpha,
                    float const *A, int *lda, float const *x, int *incx,
