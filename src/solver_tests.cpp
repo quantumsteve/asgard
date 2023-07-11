@@ -94,13 +94,11 @@ void test_kronmult(parser const &parse, P const tol_factor)
   asgard::matrix_list<P> operator_matrices;
   asgard::adapt::distributed_grid adaptive_grid(*pde, opts);
   operator_matrices.make(matrix_entry::regular, *pde, adaptive_grid, opts);
-  P const dt             = pde->get_dt();
-  auto const system_size = elem_size * table.size();
+  P const dt = pde->get_dt();
 
   // perform matrix-free gmres
-  fk::vector<P> const matrix_free_gmres = [&operator_matrices, &gold, &b, dt,
-                                           system_size]() {
-    fk::matrix<P> A(system_size, system_size);
+  fk::vector<P> const matrix_free_gmres = [&operator_matrices, &gold, &b,
+                                           dt]() {
     fk::vector<P> x(gold);
     int const restart  = parser::DEFAULT_GMRES_INNER_ITERATIONS;
     int const max_iter = parser::DEFAULT_GMRES_OUTER_ITERATIONS;
