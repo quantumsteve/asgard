@@ -29,7 +29,8 @@ simple_gmres_euler(const P dt, kronmult_matrix<P> const &mat, fk::vector<P> &x,
 
 template<typename P>
 gmres_info<P>
-simple_gmres_euler(const P dt, kronmult_matrix<P> const &mat, fk::vector<P> &x,
+simple_gmres_euler(const P dt, kronmult_matrix<P> const &mat,
+                   fk::vector<P, mem_type::owner, resource::device> &x,
                    fk::vector<P, mem_type::owner, resource::device> const &b,
                    int const restart, int const max_iter, P const tolerance);
 

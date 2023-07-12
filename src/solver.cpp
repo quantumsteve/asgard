@@ -42,18 +42,18 @@ simple_gmres_euler(const P dt, kronmult_matrix<P> const &mat, fk::vector<P> &x,
 
 template<typename P>
 gmres_info<P>
-simple_gmres_euler(const P dt, kronmult_matrix<P> const &mat, fk::vector<P> &x,
+simple_gmres_euler(const P dt, kronmult_matrix<P> const &mat,
+                   fk::vector<P, mem_type::owner, resource::device> &x,
                    fk::vector<P, mem_type::owner, resource::device> const &b,
                    int const restart, int const max_iter, P const tolerance)
 {
   return simple_gmres(
-      [&](fk::vector<P> const &x_in,
+      [&](fk::vector<P, mem_type::owner, resource::device> const &x_in,
           fk::vector<P, mem_type::owner, resource::device> &y, P const alpha,
           P const beta) -> void {
         mat.apply(-dt * alpha, x_in.data(), beta, y.data());
         int one = 1, n = y.size();
-        auto x_in_d = x_in.clone_onto_device();
-        lib_dispatch::axpy<resource::device>(n, alpha, x_in_d.data(), one,
+        lib_dispatch::axpy<resource::device>(n, alpha, x_in.data(), one,
                                              y.data(), one);
       },
       x, b, fk::matrix<P>(), restart, max_iter, tolerance);
@@ -255,7 +255,8 @@ simple_gmres(matrix_replacement mat, fk::vector<P> &x, fk::vector<P> const &b,
 // simple, node-local test version
 template<typename P, typename matrix_replacement>
 gmres_info<P>
-simple_gmres(matrix_replacement mat, fk::vector<P> &x,
+simple_gmres(matrix_replacement mat,
+             fk::vector<P, mem_type::owner, resource::device> &x,
              fk::vector<P, mem_type::owner, resource::device> const &b,
              fk::matrix<P> const &M, int restart, int max_iter, P tolerance)
 {
@@ -355,8 +356,9 @@ simple_gmres(matrix_replacement mat, fk::vector<P> &x,
     krylov_sol(0) = norm_r;
     for (i = 0; i < restart; ++i)
     {
-      auto tmp = fk::vector<P>(
-          fk::vector<P, mem_type::view>(basis, i, 0, basis.nrows() - 1));
+      auto tmp = fk::vector<P>(fk::vector<P, mem_type::view>(basis, i, 0,
+                                                             basis.nrows() - 1))
+                     .clone_onto_device();
       fk::vector<P, mem_type::owner, resource::device> new_basis_d(tmp.size());
       mat(tmp, new_basis_d, P{1.0}, P{0.0});
       fk::vector<P> new_basis = new_basis_d.clone_onto_host();
@@ -402,9 +404,12 @@ simple_gmres(matrix_replacement mat, fk::vector<P> &x,
 
         auto s_view = fk::vector<P, mem_type::view>(krylov_sol, 0, i);
         fm::gesv(proj, s_view, pivots);
-        x = x +
-            (fk::matrix<P, mem_type::view>(basis, 0, basis.nrows() - 1, 0, i) *
-             s_view);
+        auto x_h = x.clone_onto_host();
+        x_h = x_h + (fk::matrix<P, mem_type::view>(basis, 0, basis.nrows() - 1,
+                                                   0, i) *
+                     s_view);
+        x   = x_h.clone_onto_device();
+
         break; // depart the inner iteration loop
       }
     } // end of inner iteration loop
@@ -418,9 +423,11 @@ simple_gmres(matrix_replacement mat, fk::vector<P> &x,
     auto s_view = fk::vector<P, mem_type::view>(krylov_sol, 0, restart - 1);
     std::vector<int> pivots(restart);
     fm::gesv(proj, s_view, pivots);
-    x = x + (fk::matrix<P, mem_type::view>(basis, 0, basis.nrows() - 1, 0,
-                                           restart - 1) *
-             s_view);
+    auto x_h = x.clone_onto_host();
+    x_h = x_h + (fk::matrix<P, mem_type::view>(basis, 0, basis.nrows() - 1, 0,
+                                               restart - 1) *
+                 s_view);
+    x   = x_h.clone_onto_device();
     P const norm_r_outer                               = compute_residual();
     krylov_sol(std::min(krylov_sol.size() - 1, i + 1)) = norm_r_outer;
     error                                              = norm_r_outer / norm_b;
@@ -568,7 +575,8 @@ simple_gmres_euler(const double dt, kronmult_matrix<double> const &mat,
                    double const tolerance);
 
 template gmres_info<double> simple_gmres_euler(
-    const double dt, kronmult_matrix<double> const &mat, fk::vector<double> &x,
+    const double dt, kronmult_matrix<double> const &mat,
+    fk::vector<double, mem_type::owner, resource::device> &x,
     fk::vector<double, mem_type::owner, resource::device> const &b,
     int const restart, int const max_iter, double const tolerance);
 
@@ -599,7 +607,8 @@ simple_gmres_euler(const float dt, kronmult_matrix<float> const &mat,
                    float const tolerance);
 
 template gmres_info<float> simple_gmres_euler(
-    const float dt, kronmult_matrix<float> const &mat, fk::vector<float> &x,
+    const float dt, kronmult_matrix<float> const &mat,
+    fk::vector<float, mem_type::owner, resource::device> &x,
     fk::vector<float, mem_type::owner, resource::device> const &b,
     int const restart, int const max_iter, float const tolerance);
 
