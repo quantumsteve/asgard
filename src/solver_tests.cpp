@@ -109,6 +109,21 @@ void test_kronmult(parser const &parse, P const tol_factor)
   }();
 
   rmse_comparison(gold, matrix_free_gmres, tol_factor);
+
+  // perform matrix-free gmres
+  fk::vector<P> const mf_gpu_gmres = [&operator_matrices, &gold, &b, dt]() {
+    fk::vector<P> x(gold);
+    fk::vector<P, mem_type::owner, resource::device> b_d =
+        b.clone_onto_device();
+    int const restart  = parser::DEFAULT_GMRES_INNER_ITERATIONS;
+    int const max_iter = parser::DEFAULT_GMRES_OUTER_ITERATIONS;
+    P const tolerance  = std::is_same_v<float, P> ? 1e-6 : 1e-12;
+    solver::simple_gmres_euler(dt, operator_matrices[matrix_entry::regular], x,
+                               b_d, restart, max_iter, tolerance);
+    return x;
+  }();
+
+  rmse_comparison(gold, mf_gpu_gmres, tol_factor);
 }
 
 TEMPLATE_TEST_CASE("simple GMRES", "[solver]", test_precs)
