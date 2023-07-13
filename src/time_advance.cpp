@@ -826,12 +826,9 @@ imex_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
     operator_matrices.reset_coefficients(matrix_entry::imex_implicit, pde,
                                          adaptive_grid, program_opts);
 
-    fk::vector<P, mem_type::owner, resource::host> f_2_host =
-        x.clone_onto_host();
     pde.gmres_outputs[0] = solver::simple_gmres_euler(
-        pde.get_dt(), operator_matrices[matrix_entry::imex_implicit], f_2_host,
-        x.clone_onto_host(), restart, max_iter, tolerance);
-    f_2.transfer_from(f_2_host);
+        pde.get_dt(), operator_matrices[matrix_entry::imex_implicit], f_2,
+        x, restart, max_iter, tolerance);
   }
   else
   {
@@ -896,17 +893,17 @@ imex_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
 
     // Final stage f3
     tools::timer.start("implicit_2_solve");
-    fk::vector<P, mem_type::owner, resource::host> f_3 = x.clone_onto_host();
+    fk::vector<P, mem_type::owner, resource::device> f_3(x);
 
     operator_matrices.reset_coefficients(matrix_entry::imex_implicit, pde,
                                          adaptive_grid, program_opts);
 
     pde.gmres_outputs[1] = solver::simple_gmres_euler(
         P{0.5} * pde.get_dt(), operator_matrices[matrix_entry::imex_implicit],
-        f_3, x.clone_onto_host(), restart, max_iter, tolerance);
+        f_3, x, restart, max_iter, tolerance);
     tools::timer.stop("implicit_2_solve");
     tools::timer.stop("implicit_2");
-    return f_3;
+    return f_3.clone_onto_host();
   }
   else
   {
