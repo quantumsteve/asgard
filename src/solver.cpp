@@ -412,9 +412,9 @@ simple_gmres(matrix_replacement mat,
 
         auto s_view = fk::vector<P, mem_type::view>(krylov_sol, 0, i);
         fm::gesv(proj, s_view, pivots);
-        fk::vector<P, mem_type::owner, resource::device> dx(s_view.size());
         fk::matrix<P, mem_type::view, resource::device> m(
             basis, 0, basis.nrows() - 1, 0, i);
+        fk::vector<P, mem_type::owner, resource::device> dx(m.nrows());
         fm::gemv(m, s_view.clone_onto_device(), dx);
         lib_dispatch::axpy<resource::device>(dx.size(), P{1.0}, dx.data(), 1,
                                              x.data(), 1);
@@ -432,9 +432,9 @@ simple_gmres(matrix_replacement mat,
     std::vector<int> pivots(restart);
     fm::gesv(proj, s_view, pivots);
 
-    fk::vector<P, mem_type::owner, resource::device> dx(s_view.size());
     fk::matrix<P, mem_type::view, resource::device> m(
         basis, 0, basis.nrows() - 1, 0, restart - 1);
+    fk::vector<P, mem_type::owner, resource::device> dx(m.nrows());
     fm::gemv(m, s_view.clone_onto_device(), dx);
     lib_dispatch::axpy<resource::device>(dx.size(), P{1.0}, dx.data(), 1,
                                          x.data(), 1);
