@@ -304,13 +304,26 @@ public:
    *
    * This method is not thread-safe!
    */
+  template<resource input_resrc  = resource::host,
+           resource output_resrc = resource::host>
   void apply(precision alpha, precision const x[], precision beta,
              precision y[]) const
   {
 #ifdef ASGARD_USE_CUDA
-    if (beta != 0)
-      fk::copy_to_device(ydev.data(), y, ydev.size());
-    fk::copy_to_device(xdev.data(), x, xdev.size());
+    if constexpr (input_resrc == resource::host)
+    {
+      // copy inputs from host->device
+      if (beta != 0)
+        fk::copy_to_device(ydev.data(), y, ydev.size());
+      fk::copy_to_device(xdev.data(), x, xdev.size());
+    }
+    else if constexpr (input_resrc == resource::device)
+    {
+      // inputs are already present on device, so copy device->device
+      if (beta != 0)
+        fk::copy_on_device(ydev.data(), y, ydev.size());
+      fk::copy_on_device(xdev.data(), x, xdev.size());
+    }
     if (is_dense())
     {
       if (iA.size() > 0)
@@ -457,7 +470,14 @@ public:
 #endif
       }
     }
-    fk::copy_to_host(y, ydev.data(), ydev.size());
+    if constexpr (output_resrc == resource::host)
+    {
+      fk::copy_to_host(y, ydev.data(), ydev.size());
+    }
+    else if constexpr (output_resrc == resource::device)
+    {
+      fk::copy_on_device(y, ydev.data(), ydev.size());
+    }
 #else
     if (is_dense())
     {

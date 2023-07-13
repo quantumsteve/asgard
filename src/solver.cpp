@@ -51,7 +51,7 @@ simple_gmres_euler(const P dt, kronmult_matrix<P> const &mat,
       [&](fk::vector<P, mem_type::owner, resource::device> const &x_in,
           fk::vector<P, mem_type::owner, resource::device> &y, P const alpha,
           P const beta) -> void {
-        mat.apply(-dt * alpha, x_in.data(), beta, y.data());
+        mat.template apply<resource::device, resource::device>(-dt * alpha, x_in.data(), beta, y.data());
         int one = 1, n = y.size();
         lib_dispatch::axpy<resource::device>(n, alpha, x_in.data(), one,
                                              y.data(), one);
