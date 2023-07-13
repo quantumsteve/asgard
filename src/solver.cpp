@@ -404,12 +404,12 @@ simple_gmres(matrix_replacement mat,
 
         auto s_view = fk::vector<P, mem_type::view>(krylov_sol, 0, i);
         fm::gesv(proj, s_view, pivots);
-        auto x_h = x.clone_onto_host();
-        x_h = x_h + (fk::matrix<P, mem_type::view>(basis, 0, basis.nrows() - 1,
-                                                   0, i) *
-                     s_view);
-        x   = x_h.clone_onto_device();
-
+        fk::vector<P> dx =
+            fk::matrix<P, mem_type::view>(basis, 0, basis.nrows() - 1, 0, i) *
+            s_view;
+        auto dx_d = dx.clone_onto_device();
+        lib_dispatch::axpy<resource::device>(dx_d.size(), P{1.0}, dx_d.data(),
+                                             1, x.data(), 1);
         break; // depart the inner iteration loop
       }
     } // end of inner iteration loop
@@ -423,11 +423,13 @@ simple_gmres(matrix_replacement mat,
     auto s_view = fk::vector<P, mem_type::view>(krylov_sol, 0, restart - 1);
     std::vector<int> pivots(restart);
     fm::gesv(proj, s_view, pivots);
-    auto x_h = x.clone_onto_host();
-    x_h = x_h + (fk::matrix<P, mem_type::view>(basis, 0, basis.nrows() - 1, 0,
-                                               restart - 1) *
-                 s_view);
-    x   = x_h.clone_onto_device();
+
+    fk::vector<P> dx = fk::matrix<P, mem_type::view>(
+                           basis, 0, basis.nrows() - 1, 0, restart - 1) *
+                       s_view;
+    auto dx_d = dx.clone_onto_device();
+    lib_dispatch::axpy<resource::device>(dx_d.size(), P{1.0}, dx_d.data(), 1,
+                                         x.data(), 1);
     P const norm_r_outer                               = compute_residual();
     krylov_sol(std::min(krylov_sol.size() - 1, i + 1)) = norm_r_outer;
     error                                              = norm_r_outer / norm_b;
