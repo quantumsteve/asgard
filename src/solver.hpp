@@ -26,14 +26,14 @@ gmres_info<P>
 simple_gmres_euler(const P dt, kronmult_matrix<P> const &mat, fk::vector<P> &x,
                    fk::vector<P> const &b, int const restart,
                    int const max_iter, P const tolerance);
-
+#ifdef ASGARD_USE_CUDA
 template<typename P>
 gmres_info<P>
 simple_gmres_euler(const P dt, kronmult_matrix<P> const &mat,
                    fk::vector<P, mem_type::owner, resource::device> &x,
                    fk::vector<P, mem_type::owner, resource::device> const &b,
                    int const restart, int const max_iter, P const tolerance);
-
+#endif
 template<typename P>
 void setup_poisson(const int N_nodes, P const x_min, P const x_max,
                    fk::vector<P> &diag, fk::vector<P> &off_diag);

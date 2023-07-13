@@ -39,7 +39,7 @@ simple_gmres_euler(const P dt, kronmult_matrix<P> const &mat, fk::vector<P> &x,
       },
       x, b, fk::matrix<P>(), restart, max_iter, tolerance);
 }
-
+#ifdef ASGARD_USE_CUDA
 template<typename P>
 gmres_info<P>
 simple_gmres_euler(const P dt, kronmult_matrix<P> const &mat,
@@ -58,7 +58,7 @@ simple_gmres_euler(const P dt, kronmult_matrix<P> const &mat,
       },
       x, b, fk::matrix<P>(), restart, max_iter, tolerance);
 }
-
+#endif
 /*! Generates a default number inner iterations when no use input is given
  * \param num_cols Number of columns in the A matrix.
  * \returns default number of iterations before restart
@@ -251,7 +251,7 @@ simple_gmres(matrix_replacement mat, fk::vector<P> &x, fk::vector<P> const &b,
 
   return done(error, it, i);
 }
-
+#ifdef ASGARD_USE_CUDA
 // simple, node-local test version
 template<typename P, typename matrix_replacement>
 gmres_info<P>
@@ -442,7 +442,7 @@ simple_gmres(matrix_replacement mat,
 
   return done(error, it, i);
 }
-
+#endif
 template<typename P>
 void setup_poisson(const int N_elements, P const x_min, P const x_max,
                    fk::vector<P> &diag, fk::vector<P> &off_diag)
