@@ -51,7 +51,8 @@ simple_gmres_euler(const P dt, kronmult_matrix<P> const &mat,
       [&](fk::vector<P, mem_type::owner, resource::device> const &x_in,
           fk::vector<P, mem_type::owner, resource::device> &y, P const alpha,
           P const beta) -> void {
-        mat.template apply<resource::device, resource::device>(-dt * alpha, x_in.data(), beta, y.data());
+        mat.template apply<resource::device, resource::device>(
+            -dt * alpha, x_in.data(), beta, y.data());
         int one = 1, n = y.size();
         lib_dispatch::axpy<resource::device>(n, alpha, x_in.data(), one,
                                              y.data(), one);
@@ -576,13 +577,13 @@ simple_gmres_euler(const double dt, kronmult_matrix<double> const &mat,
                    fk::vector<double> &x, fk::vector<double> const &b,
                    int const restart, int const max_iter,
                    double const tolerance);
-
+#ifdef ASGARD_USE_CUDA
 template gmres_info<double> simple_gmres_euler(
     const double dt, kronmult_matrix<double> const &mat,
     fk::vector<double, mem_type::owner, resource::device> &x,
     fk::vector<double, mem_type::owner, resource::device> const &b,
     int const restart, int const max_iter, double const tolerance);
-
+#endif
 template void setup_poisson(const int N_elements, double const x_min,
                             double const x_max, fk::vector<double> &diag,
                             fk::vector<double> &off_diag);
@@ -608,13 +609,13 @@ simple_gmres_euler(const float dt, kronmult_matrix<float> const &mat,
                    fk::vector<float> &x, fk::vector<float> const &b,
                    int const restart, int const max_iter,
                    float const tolerance);
-
+#ifdef ASGARD_USE_CUDA
 template gmres_info<float> simple_gmres_euler(
     const float dt, kronmult_matrix<float> const &mat,
     fk::vector<float, mem_type::owner, resource::device> &x,
     fk::vector<float, mem_type::owner, resource::device> const &b,
     int const restart, int const max_iter, float const tolerance);
-
+#endif
 template void setup_poisson(const int N_elements, float const x_min,
                             float const x_max, fk::vector<float> &diag,
                             fk::vector<float> &off_diag);
