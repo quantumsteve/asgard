@@ -337,7 +337,7 @@ simple_gmres(matrix_replacement mat,
     return done(error, 0, 0);
   }
 
-  fk::matrix<P> basis(n, restart + 1);
+  fk::matrix<P, mem_type::owner, resource::device> basis(n, restart + 1);
   fk::matrix<P> krylov_proj(restart + 1, restart);
   fk::vector<P> sines(restart + 1);
   fk::vector<P> cosines(restart + 1);
@@ -348,7 +348,7 @@ simple_gmres(matrix_replacement mat,
   {
     P const norm_r = compute_residual();
 
-    auto scaled = residual.clone_onto_host();
+    auto scaled = residual;
     scaled.scale(1. / norm_r);
     basis.update_col(0, scaled);
 
@@ -356,28 +356,29 @@ simple_gmres(matrix_replacement mat,
     krylov_sol(0) = norm_r;
     for (i = 0; i < restart; ++i)
     {
-      auto tmp = fk::vector<P>(fk::vector<P, mem_type::view>(basis, i, 0,
-                                                             basis.nrows() - 1))
-                     .clone_onto_device();
-      fk::vector<P, mem_type::owner, resource::device> new_basis_d(tmp.size());
-      mat(tmp, new_basis_d, P{1.0}, P{0.0});
-      fk::vector<P> new_basis = new_basis_d.clone_onto_host();
+      fk::vector<P, mem_type::owner, resource::device> tmp(
+          fk::vector<P, mem_type::view, resource::device>(basis, i, 0,
+                                                          basis.nrows() - 1));
+      fk::vector<P, mem_type::owner, resource::device> new_basis(tmp.size());
+      mat(tmp, new_basis, P{1.0}, P{0.0});
 
-      if (do_precond)
+      /*if (do_precond)
       {
         fm::getrs(precond, new_basis, precond_pivots);
-      }
+      }*/
 
       for (int k = 0; k <= i; ++k)
       {
-        fk::vector<P, mem_type::const_view> const basis_vect(basis, k, 0,
-                                                             basis.nrows() - 1);
+        fk::vector<P, mem_type::const_view, resource::device> const basis_vect(
+            basis, k, 0, basis.nrows() - 1);
         krylov_proj(k, i) = new_basis * basis_vect;
-        new_basis         = new_basis - (basis_vect * krylov_proj(k, i));
+        lib_dispatch::axpy<resource::device>(
+            new_basis.size(), P{-1.} * krylov_proj(k, i), basis_vect.data(), 1,
+            new_basis.data(), 1);
       }
       krylov_proj(i + 1, i) = fm::nrm2(new_basis);
 
-      basis.update_col(i + 1, new_basis * (1 / krylov_proj(i + 1, i)));
+      basis.update_col(i + 1, new_basis.scale(1 / krylov_proj(i + 1, i)));
       for (int k = 0; k <= i - 1; ++k)
       {
         P const temp =
@@ -404,12 +405,12 @@ simple_gmres(matrix_replacement mat,
 
         auto s_view = fk::vector<P, mem_type::view>(krylov_sol, 0, i);
         fm::gesv(proj, s_view, pivots);
-        fk::vector<P> dx =
-            fk::matrix<P, mem_type::view>(basis, 0, basis.nrows() - 1, 0, i) *
-            s_view;
-        auto dx_d = dx.clone_onto_device();
-        lib_dispatch::axpy<resource::device>(dx_d.size(), P{1.0}, dx_d.data(),
-                                             1, x.data(), 1);
+        fk::vector<P, mem_type::owner, resource::device> dx(s_view.size());
+        fk::matrix<P, mem_type::view, resource::device> m(
+            basis, 0, basis.nrows() - 1, 0, i);
+        fm::gemv(m, s_view.clone_onto_device(), dx);
+        lib_dispatch::axpy<resource::device>(dx.size(), P{1.0}, dx.data(), 1,
+                                             x.data(), 1);
         break; // depart the inner iteration loop
       }
     } // end of inner iteration loop
@@ -424,11 +425,11 @@ simple_gmres(matrix_replacement mat,
     std::vector<int> pivots(restart);
     fm::gesv(proj, s_view, pivots);
 
-    fk::vector<P> dx = fk::matrix<P, mem_type::view>(
-                           basis, 0, basis.nrows() - 1, 0, restart - 1) *
-                       s_view;
-    auto dx_d = dx.clone_onto_device();
-    lib_dispatch::axpy<resource::device>(dx_d.size(), P{1.0}, dx_d.data(), 1,
+    fk::vector<P, mem_type::owner, resource::device> dx(s_view.size());
+    fk::matrix<P, mem_type::view, resource::device> m(
+        basis, 0, basis.nrows() - 1, 0, restart - 1);
+    fm::gemv(m, s_view.clone_onto_device(), dx);
+    lib_dispatch::axpy<resource::device>(dx.size(), P{1.0}, dx.data(), 1,
                                          x.data(), 1);
     P const norm_r_outer                               = compute_residual();
     krylov_sol(std::min(krylov_sol.size() - 1, i + 1)) = norm_r_outer;

@@ -399,9 +399,8 @@ public:
    *  \param x multiply each element by x
    *  \return reference to this vector
    */
-  template<mem_type m_ = mem, typename = disable_for_const_view<m_>,
-           resource r_ = resrc, typename = enable_for_host<r_>>
-  vector<P, mem> &scale(P const x);
+  template<mem_type m_ = mem, typename = disable_for_const_view<m_>>
+  vector<P, mem, resrc> &scale(P const x);
 
   // basic queries to private data
 
@@ -723,9 +722,9 @@ public:
   // utility functions
   //
   template<mem_type omem, mem_type m_ = mem,
-           typename = disable_for_const_view<m_>, resource r_ = resrc,
-           typename = enable_for_host<r_>>
-  matrix<P, mem> &update_col(int const, fk::vector<P, omem> const &);
+           typename = disable_for_const_view<m_>>
+  matrix<P, mem, resrc> &
+  update_col(int const, fk::vector<P, omem, resrc> const &);
   template<mem_type m_ = mem, typename = disable_for_const_view<m_>,
            resource r_ = resrc, typename = enable_for_host<r_>>
   matrix<P, mem> &update_col(int const, std::vector<P> const &);
@@ -1358,14 +1357,14 @@ fk::vector<P> fk::vector<P, mem, resrc>::single_column_kron(
 }
 
 template<typename P, mem_type mem, resource resrc>
-template<mem_type, typename, resource, typename>
-fk::vector<P, mem> &fk::vector<P, mem, resrc>::scale(P const x)
+template<mem_type, typename>
+fk::vector<P, mem, resrc> &fk::vector<P, mem, resrc>::scale(P const x)
 {
   int one_i = 1;
   int n     = this->size();
   P alpha   = x;
 
-  lib_dispatch::scal(n, alpha, this->data(), one_i);
+  lib_dispatch::scal<resrc>(n, alpha, this->data(), one_i);
 
   return *this;
 }
@@ -2324,10 +2323,10 @@ P fk::matrix<P, mem, resrc>::determinant() const
 // original)
 //
 template<typename P, mem_type mem, resource resrc>
-template<mem_type omem, mem_type, typename, resource, typename>
-fk::matrix<P, mem> &
+template<mem_type omem, mem_type, typename>
+fk::matrix<P, mem, resrc> &
 fk::matrix<P, mem, resrc>::update_col(int const col_idx,
-                                      fk::vector<P, omem> const &v)
+                                      fk::vector<P, omem, resrc> const &v)
 {
   expect(nrows() == static_cast<int>(v.size()));
   expect(col_idx < ncols());
