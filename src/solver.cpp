@@ -164,36 +164,27 @@ simple_gmres(matrix_replacement mat, fk::vector<P> &x, fk::vector<P> const &b,
       {
         fm::getrs(precond, new_basis, precond_pivots);
       }
+      fk::matrix<P, mem_type::const_view> basis_v(basis, 0, n - 1, 0, i);
+      fk::vector<P, mem_type::view> coeffs(krylov_proj, i, 0, i);
+      fm::gemv(basis_v, new_basis, coeffs, true, P{1.0}, P{0.0});
+      fm::gemv(basis_v, coeffs, new_basis, false, P{-1.0}, P{1.0});
 
-      for (int k = 0; k <= i; ++k)
-      {
-        fk::vector<P, mem_type::const_view> const basis_vect(basis, k, 0,
-                                                             basis.nrows() - 1);
-        krylov_proj(k, i) = new_basis * basis_vect;
-        new_basis         = new_basis - (basis_vect * krylov_proj(k, i));
-      }
       krylov_proj(i + 1, i) = fm::nrm2(new_basis);
-
-      basis.update_col(i + 1, new_basis * (1 / krylov_proj(i + 1, i)));
-      for (int k = 0; k <= i - 1; ++k)
+      fm::scal(P{1.0} / krylov_proj(i + 1, i), new_basis);
+      basis.update_col(i + 1, new_basis);
+      for (int k = 0; k < i; ++k)
       {
-        P const temp =
-            cosines(k) * krylov_proj(k, i) + sines(k) * krylov_proj(k + 1, i);
-        krylov_proj(k + 1, i) =
-            -sines(k) * krylov_proj(k, i) + cosines(k) * krylov_proj(k + 1, i);
-        krylov_proj(k, i) = temp;
+        lib_dispatch::rot(1, &coeffs[k], 1, &coeffs[k + 1], 1, cosines[k],
+                          sines[k]);
       }
 
       // compute given's rotation
-      lib_dispatch::rotg(krylov_proj.data(i, i), krylov_proj.data(i + 1, i),
+      lib_dispatch::rotg(coeffs.data(i), krylov_proj.data(i + 1, i),
                          cosines.data(i), sines.data(i));
-
       krylov_proj(i + 1, i) = 0.0;
-      P const temp          = cosines(i) * krylov_sol(i);
-      krylov_sol(i + 1)     = -sines(i) * krylov_sol(i);
-      krylov_sol(i)         = temp;
-      error                 = std::abs(krylov_sol(i + 1)) / norm_b;
-
+      lib_dispatch::rot(1, krylov_sol.data(i), 1, krylov_sol.data(i + 1), 1,
+                        cosines[i], sines[i]);
+      error = std::abs(krylov_sol(i + 1)) / norm_b;
       if (error <= tolerance)
       {
         auto proj = fk::matrix<P, mem_type::view>(krylov_proj, 0, i, 0, i);

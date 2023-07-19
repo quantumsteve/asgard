@@ -162,7 +162,7 @@ TEMPLATE_TEST_CASE("simple GMRES", "[solver]", test_precs)
         std::numeric_limits<TestType>::epsilon());
     std::cout.clear();
     REQUIRE(gmres_output.error < std::numeric_limits<TestType>::epsilon());
-    REQUIRE(test == x_gold_2);
+    rmse_comparison(x_gold_2, test, get_tolerance<TestType>(10));
   }
 }
 
