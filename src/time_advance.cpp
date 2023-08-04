@@ -42,13 +42,14 @@ get_sources(PDE<P> const &pde, adapt::distributed_grid<P> const &grid,
 }
 
 // FIXME want to change how sources/bcs are handled
-template<typename P>
-fk::vector<P>
+template<typename P, resource input_mode>
+fk::vector<P, mem_type::owner, input_mode>
 adaptive_advance(method const step_method, PDE<P> &pde,
                  matrix_list<P> &operator_matrices,
                  adapt::distributed_grid<P> &adaptive_grid,
                  basis::wavelet_transform<P, resource::host> const &transformer,
-                 options const &program_opts, fk::vector<P> const &x_orig,
+                 options const &program_opts,
+                 fk::vector<P, mem_type::owner, input_mode> const &x_orig,
                  P const time, bool const update_system)
 {
   if (!program_opts.do_adapt_levels)
@@ -67,13 +68,14 @@ adaptive_advance(method const step_method, PDE<P> &pde,
       return implicit_advance(pde, operator_matrices, adaptive_grid,
                               transformer, program_opts, unscaled_parts, x_orig,
                               time, update_system);
-    case (method::imex):
-      return imex_advance(pde, operator_matrices, adaptive_grid, transformer,
-                          program_opts, unscaled_parts, x_orig, time,
-                          program_opts.solver, update_system);
+      // case (method::imex):
+      //  return imex_advance(pde, operator_matrices, adaptive_grid,
+      //  transformer,
+      //                      program_opts, unscaled_parts, x_orig, time,
+      //                      program_opts.solver, update_system);
     };
   }
-
+  /*
   // coarsen
   auto old_size = adaptive_grid.size();
   auto y        = adaptive_grid.coarsen_solution(pde, x_orig, program_opts);
@@ -153,20 +155,21 @@ adaptive_advance(method const step_method, PDE<P> &pde,
     }
   }
 
-  return y;
+  return y;*/
 }
 
 // this function executes an explicit time step using the current solution
 // vector x. on exit, the next solution vector is stored in x.
-template<typename P>
-fk::vector<P>
+template<typename P, resource input_mode>
+fk::vector<P, mem_type::owner, input_mode>
 explicit_advance(PDE<P> const &pde, matrix_list<P> &operator_matrices,
                  adapt::distributed_grid<P> const &adaptive_grid,
                  basis::wavelet_transform<P, resource::host> const &transformer,
                  options const &program_opts,
                  std::array<boundary_conditions::unscaled_bc_parts<P>, 2> const
                      &unscaled_parts,
-                 fk::vector<P> const &x_orig, P const time)
+                 fk::vector<P, mem_type::owner, input_mode> const &x_orig,
+                 P const time)
 {
   auto const &plan     = adaptive_grid.get_distrib_plan();
   auto const &grid     = adaptive_grid.get_subgrid(get_rank());
@@ -183,9 +186,9 @@ explicit_advance(PDE<P> const &pde, matrix_list<P> &operator_matrices,
 
   // time advance working vectors
   // input vector for apply_A
-  fk::vector<P> x(x_orig);
+  fk::vector<P, mem_type::owner, input_mode> x(x_orig);
   // a buffer for reducing across subgrid row
-  fk::vector<P> reduced_fx(row_size);
+  fk::vector<P, mem_type::owner, input_mode> reduced_fx(row_size);
 
   expect(time >= 0);
   expect(dt > 0);
@@ -204,8 +207,9 @@ explicit_advance(PDE<P> const &pde, matrix_list<P> &operator_matrices,
   // FIXME eventually want to extract RK step into function
   // -- RK step 1
   auto const apply_id = tools::timer.start("kronmult");
-  fk::vector<P> fx(row_size);
-  operator_matrices[matrix_entry::regular].apply(1.0, x.data(), 0.0, fx.data());
+  fk::vector<P, mem_type::owner, input_mode> fx(row_size);
+  operator_matrices[matrix_entry::regular].template apply<input_mode>(
+      1.0, x.data(), 0.0, fx.data());
 
   tools::timer.stop(apply_id, operator_matrices[matrix_entry::regular].flops());
   reduce_results(fx, reduced_fx, plan, get_rank());
@@ -213,23 +217,30 @@ explicit_advance(PDE<P> const &pde, matrix_list<P> &operator_matrices,
   if (pde.num_sources > 0)
   {
     auto const sources = get_sources(pde, adaptive_grid, transformer, time);
-    fm::axpy(sources, reduced_fx);
+    if constexpr (input_mode == resource::device)
+      fm::axpy(sources.clone_onto_device(), reduced_fx);
+    else
+      fm::axpy(sources, reduced_fx);
   }
 
   auto const bc0 = boundary_conditions::generate_scaled_bc(
       unscaled_parts[0], unscaled_parts[1], pde, grid.row_start, grid.row_stop,
       time);
-  fm::axpy(bc0, reduced_fx);
+  if constexpr (input_mode == resource::device)
+    fm::axpy(bc0.clone_onto_device(), reduced_fx);
+  else
+    fm::axpy(bc0, reduced_fx);
 
   // FIXME I eventually want to return a vect here
-  fk::vector<P> rk_1(x_orig.size());
+  fk::vector<P, mem_type::owner, input_mode> rk_1(x_orig.size());
   exchange_results(reduced_fx, rk_1, elem_size, plan, get_rank());
   P const rk_scale_1 = a21 * dt;
   fm::axpy(rk_1, x, rk_scale_1);
 
   // -- RK step 2
   tools::timer.start(apply_id);
-  operator_matrices[matrix_entry::regular].apply(1.0, x.data(), 0.0, fx.data());
+  operator_matrices[matrix_entry::regular].template apply<input_mode>(
+      1.0, x.data(), 0.0, fx.data());
   tools::timer.stop(apply_id, operator_matrices[matrix_entry::regular].flops());
   reduce_results(fx, reduced_fx, plan, get_rank());
 
@@ -237,15 +248,21 @@ explicit_advance(PDE<P> const &pde, matrix_list<P> &operator_matrices,
   {
     auto const sources =
         get_sources(pde, adaptive_grid, transformer, time + c2 * dt);
-    fm::axpy(sources, reduced_fx);
+    if constexpr (input_mode == resource::device)
+      fm::axpy(sources.clone_onto_device(), reduced_fx);
+    else
+      fm::axpy(sources, reduced_fx);
   }
 
   fk::vector<P> const bc1 = boundary_conditions::generate_scaled_bc(
       unscaled_parts[0], unscaled_parts[1], pde, grid.row_start, grid.row_stop,
       time + c2 * dt);
-  fm::axpy(bc1, reduced_fx);
+  if constexpr (input_mode == resource::device)
+    fm::axpy(bc1.clone_onto_device(), reduced_fx);
+  else
+    fm::axpy(bc1, reduced_fx);
 
-  fk::vector<P> rk_2(x_orig.size());
+  fk::vector<P, mem_type::owner, input_mode> rk_2(x_orig.size());
   exchange_results(reduced_fx, rk_2, elem_size, plan, get_rank());
 
   fm::copy(x_orig, x);
@@ -257,7 +274,8 @@ explicit_advance(PDE<P> const &pde, matrix_list<P> &operator_matrices,
 
   // -- RK step 3
   tools::timer.start(apply_id);
-  operator_matrices[matrix_entry::regular].apply(1.0, x.data(), 0.0, fx.data());
+  operator_matrices[matrix_entry::regular].template apply<input_mode>(
+      1.0, x.data(), 0.0, fx.data());
   tools::timer.stop(apply_id, operator_matrices[matrix_entry::regular].flops());
   reduce_results(fx, reduced_fx, plan, get_rank());
 
@@ -265,15 +283,21 @@ explicit_advance(PDE<P> const &pde, matrix_list<P> &operator_matrices,
   {
     auto const sources =
         get_sources(pde, adaptive_grid, transformer, time + c3 * dt);
-    fm::axpy(sources, reduced_fx);
+    if constexpr (input_mode == resource::device)
+      fm::axpy(sources.clone_onto_device(), reduced_fx);
+    else
+      fm::axpy(sources, reduced_fx);
   }
 
   auto const bc2 = boundary_conditions::generate_scaled_bc(
       unscaled_parts[0], unscaled_parts[1], pde, grid.row_start, grid.row_stop,
       time + c3 * dt);
-  fm::axpy(bc2, reduced_fx);
+  if constexpr (input_mode == resource::device)
+    fm::axpy(bc2.clone_onto_device(), reduced_fx);
+  else
+    fm::axpy(bc2, reduced_fx);
 
-  fk::vector<P> rk_3(x_orig.size());
+  fk::vector<P, mem_type::owner, input_mode> rk_3(x_orig.size());
   exchange_results(reduced_fx, rk_3, elem_size, plan, get_rank());
 
   // -- finish
@@ -291,16 +315,16 @@ explicit_advance(PDE<P> const &pde, matrix_list<P> &operator_matrices,
 
 // this function executes an implicit time step using the current solution
 // vector x. on exit, the next solution vector is stored in fx.
-template<typename P>
-fk::vector<P>
+template<typename P, resource input_mode>
+fk::vector<P, mem_type::owner, input_mode>
 implicit_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
                  adapt::distributed_grid<P> const &adaptive_grid,
                  basis::wavelet_transform<P, resource::host> const &transformer,
                  options const &program_opts,
                  std::array<boundary_conditions::unscaled_bc_parts<P>, 2> const
                      &unscaled_parts,
-                 fk::vector<P> const &x_orig, P const time,
-                 bool const update_system)
+                 fk::vector<P, mem_type::owner, input_mode> const &x_orig,
+                 P const time, bool const update_system)
 {
   expect(time >= 0);
 #ifdef ASGARD_USE_SCALAPACK
@@ -320,13 +344,16 @@ implicit_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
   auto const size = elem_size * adaptive_grid.get_subgrid(get_rank()).nrows();
   fk::vector<P> x = col_to_row_major(x_orig, size);
 #else
-  fk::vector<P> x(x_orig);
+  fk::vector<P, mem_type::owner, input_mode> x(x_orig);
 #endif
   if (pde.num_sources > 0)
   {
     auto const sources =
         get_sources(pde, adaptive_grid, transformer, time + dt);
-    fm::axpy(sources, x, dt);
+    if constexpr (input_mode == resource::device)
+      fm::axpy(sources.clone_onto_device(), x, dt);
+    else
+      fm::axpy(sources, x, dt);
   }
 
   auto const &grid       = adaptive_grid.get_subgrid(get_rank());
@@ -344,7 +371,10 @@ implicit_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
   auto const bc = boundary_conditions::generate_scaled_bc(
       unscaled_parts[0], unscaled_parts[1], pde, grid.row_start, grid.row_stop,
       time + dt);
-  fm::axpy(bc, x, dt);
+  if constexpr (input_mode == resource::device)
+    fm::axpy(bc.clone_onto_device(), x, dt);
+  else
+    fm::axpy(bc, x, dt);
 
   if (solver != solve_opts::gmres && (first_time || update_system))
   {
@@ -370,8 +400,17 @@ implicit_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
       {
         ipiv.resize(ipiv_size);
       }
-      fm::gesv(A, x, ipiv);
-      return x;
+      if constexpr (input_mode == resource::device)
+      {
+        auto x_h = x.clone_onto_host();
+        fm::gesv(A, x_h, ipiv);
+        return x_h.clone_onto_device();
+      }
+      else
+      {
+        fm::gesv(A, x, ipiv);
+        return x;
+      }
     }
     else if (solver == solve_opts::scalapack)
     {
@@ -395,8 +434,17 @@ implicit_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
 
   if (solver == solve_opts::direct)
   {
-    fm::getrs(A, x, ipiv);
-    return x;
+    if constexpr (input_mode == resource::device)
+    {
+      auto x_h = x.clone_onto_host();
+      fm::getrs(A, x_h, ipiv);
+      return x_h.clone_onto_device();
+    }
+    else
+    {
+      fm::getrs(A, x, ipiv);
+      return x;
+    }
   }
   else if (solver == solve_opts::scalapack)
   {
@@ -418,7 +466,7 @@ implicit_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
     P const tolerance  = program_opts.gmres_tolerance;
     int const restart  = program_opts.gmres_inner_iterations;
     int const max_iter = program_opts.gmres_outer_iterations;
-    fk::vector<P> fx(x);
+    fk::vector<P, mem_type::owner, input_mode> fx(x);
     // TODO: do something better to save gmres output to pde
     pde.gmres_outputs[0] = solver::simple_gmres_euler(
         pde.get_dt(), operator_matrices[matrix_entry::regular], fx, x, restart,
@@ -448,16 +496,16 @@ asgard::options make_options(std::vector<std::string> const arguments)
 
 // this function executes an implicit-explicit (imex) time step using the
 // current solution vector x. on exit, the next solution vector is stored in fx.
-template<typename P>
-fk::vector<P>
+template<typename P, resource input_mode>
+fk::vector<P, mem_type::owner, input_mode>
 imex_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
              adapt::distributed_grid<P> const &adaptive_grid,
              basis::wavelet_transform<P, resource::host> const &transformer,
              options const &program_opts,
              std::array<boundary_conditions::unscaled_bc_parts<P>, 2> const
                  &unscaled_parts,
-             fk::vector<P> const &x_orig, P const time, solve_opts const solver,
-             bool const update_system)
+             fk::vector<P, mem_type::owner, input_mode> const &x_orig,
+             P const time, solve_opts const solver, bool const update_system)
 {
   ignore(unscaled_parts);
   ignore(solver);
@@ -847,7 +895,6 @@ template fk::vector<double> imex_advance(
         &unscaled_parts,
     fk::vector<double> const &x_orig, double const time,
     solve_opts const solver, bool const update_system);
-
 #endif
 
 #ifdef ASGARD_ENABLE_FLOAT
@@ -887,6 +934,92 @@ imex_advance(PDE<float> &pde, matrix_list<float> &operator_matrix,
                  &unscaled_parts,
              fk::vector<float> const &x_orig, float const time,
              solve_opts const solver, bool const update_system);
+#endif
+
+#ifdef ASGARD_USE_CUDA
+#ifdef ASGARD_ENABLE_DOUBLE
+template fk::vector<double, mem_type::owner, resource::device> adaptive_advance(
+    method const step_method, PDE<double> &pde,
+    matrix_list<double> &operator_matrix,
+    adapt::distributed_grid<double> &adaptive_grid,
+    basis::wavelet_transform<double, resource::host> const &transformer,
+    options const &program_opts,
+    fk::vector<double, mem_type::owner, resource::device> const &x,
+    double const time, bool const update_system);
+
+template fk::vector<double, mem_type::owner, resource::device> explicit_advance(
+    PDE<double> const &pde, matrix_list<double> &operator_matrix,
+    adapt::distributed_grid<double> const &adaptive_grid,
+    basis::wavelet_transform<double, resource::host> const &transformer,
+    options const &program_opts,
+    std::array<boundary_conditions::unscaled_bc_parts<double>, 2> const
+        &unscaled_parts,
+    fk::vector<double, mem_type::owner, resource::device> const &x,
+    double const time);
+
+template fk::vector<double, mem_type::owner, resource::device> implicit_advance(
+    PDE<double> &pde, matrix_list<double> &operator_matrix,
+    adapt::distributed_grid<double> const &adaptive_grid,
+    basis::wavelet_transform<double, resource::host> const &transformer,
+    options const &program_opts,
+    std::array<boundary_conditions::unscaled_bc_parts<double>, 2> const
+        &unscaled_parts,
+    fk::vector<double, mem_type::owner, resource::device> const &host_space,
+    double const time, bool const update_system);
+
+/*template fk::vector<double, mem_type::owner, resource::device> imex_advance(
+    PDE<double> &pde, matrix_list<double> &operator_matrix,
+    adapt::distributed_grid<double> const &adaptive_grid,
+    basis::wavelet_transform<double, resource::host> const &transformer,
+    options const &program_opts,
+    std::array<boundary_conditions::unscaled_bc_parts<double>, 2> const
+        &unscaled_parts,
+    fk::vector<double, mem_type::owner, resource::device> const &x_orig, double
+   const time, solve_opts const solver, bool const update_system);*/
+
+#endif
+
+#ifdef ASGARD_ENABLE_FLOAT
+
+template fk::vector<float, mem_type::owner, resource::device> adaptive_advance(
+    method const step_method, PDE<float> &pde,
+    matrix_list<float> &operator_matrix,
+    adapt::distributed_grid<float> &adaptive_grid,
+    basis::wavelet_transform<float, resource::host> const &transformer,
+    options const &program_opts,
+    fk::vector<float, mem_type::owner, resource::device> const &x,
+    float const time, bool const update_system);
+
+template fk::vector<float, mem_type::owner, resource::device> explicit_advance(
+    PDE<float> const &pde, matrix_list<float> &operator_matrix,
+    adapt::distributed_grid<float> const &adaptive_grid,
+    basis::wavelet_transform<float, resource::host> const &transformer,
+    options const &program_opts,
+    std::array<boundary_conditions::unscaled_bc_parts<float>, 2> const
+        &unscaled_parts,
+    fk::vector<float, mem_type::owner, resource::device> const &x,
+    float const time);
+
+template fk::vector<float, mem_type::owner, resource::device> implicit_advance(
+    PDE<float> &pde, matrix_list<float> &operator_matrix,
+    adapt::distributed_grid<float> const &adaptive_grid,
+    basis::wavelet_transform<float, resource::host> const &transformer,
+    options const &program_opts,
+    std::array<boundary_conditions::unscaled_bc_parts<float>, 2> const
+        &unscaled_parts,
+    fk::vector<float, mem_type::owner, resource::device> const &x,
+    float const time, bool const update_system);
+
+/*template fk::vector<float, mem_type::owner, resource::device>
+imex_advance(PDE<float> &pde, matrix_list<float> &operator_matrix,
+             adapt::distributed_grid<float> const &adaptive_grid,
+             basis::wavelet_transform<float, resource::host> const &transformer,
+             options const &program_opts,
+             std::array<boundary_conditions::unscaled_bc_parts<float>, 2> const
+                 &unscaled_parts,
+             fk::vector<float, mem_type::owner, resource::device> const &x_orig,
+float const time, solve_opts const solver, bool const update_system);*/
+#endif
 #endif
 
 } // namespace asgard::time_advance

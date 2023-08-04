@@ -287,7 +287,7 @@ table::table(options const &opts, std::vector<dimension<P>> const &dims)
   {
     dof *= fm::two_raised_to(dims[lev].get_level());
   }
-
+  std::cout << "dof: " << dof << std::endl;
   // reserve element table data up front
   dev_table_builder.resize(dof);
 

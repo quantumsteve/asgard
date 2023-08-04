@@ -22,48 +22,51 @@ static constexpr resource imex_resrc = resource::host;
 
 // take an adaptivity-enabled timestep
 // make require many "pseudosteps" to refine
-template<typename P>
-fk::vector<P>
+template<typename P, resource input_mode>
+fk::vector<P, mem_type::owner, input_mode>
 adaptive_advance(method const step_method, PDE<P> &pde,
                  matrix_list<P> &operator_matrices,
                  adapt::distributed_grid<P> &adaptive_grid,
                  basis::wavelet_transform<P, resource::host> const &transformer,
-                 options const &program_opts, fk::vector<P> const &x,
+                 options const &program_opts,
+                 fk::vector<P, mem_type::owner, input_mode> const &x,
                  P const time, bool const update_system = false);
 
 // this function executes a time step using the current solution
 // vector x (in host_space).
 // on exit, the next solution vector is stored in x.
-template<typename P>
-fk::vector<P>
+template<typename P, resource input_mode>
+fk::vector<P, mem_type::owner, input_mode>
 explicit_advance(PDE<P> const &pde, matrix_list<P> &operator_matrices,
                  adapt::distributed_grid<P> const &adaptive_grid,
                  basis::wavelet_transform<P, resource::host> const &transformer,
                  options const &program_opts,
                  std::array<boundary_conditions::unscaled_bc_parts<P>, 2> const
                      &unscaled_parts,
-                 fk::vector<P> const &x, P const time);
+                 fk::vector<P, mem_type::owner, input_mode> const &x,
+                 P const time);
 
-template<typename P>
-fk::vector<P>
+template<typename P, resource input_mode>
+fk::vector<P, mem_type::owner, input_mode>
 implicit_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
                  adapt::distributed_grid<P> const &adaptive_grid,
                  basis::wavelet_transform<P, resource::host> const &transformer,
                  options const &program_opts,
                  std::array<boundary_conditions::unscaled_bc_parts<P>, 2> const
                      &unscaled_parts,
-                 fk::vector<P> const &x, P const time,
-                 bool const update_system = true);
+                 fk::vector<P, mem_type::owner, input_mode> const &x,
+                 P const time, bool const update_system = true);
 
-template<typename P>
-fk::vector<P>
+template<typename P, resource input_mode>
+fk::vector<P, mem_type::owner, input_mode>
 imex_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
              adapt::distributed_grid<P> const &adaptive_grid,
              basis::wavelet_transform<P, resource::host> const &transformer,
              options const &program_opts,
              std::array<boundary_conditions::unscaled_bc_parts<P>, 2> const
                  &unscaled_parts,
-             fk::vector<P> const &x_orig, P const time, solve_opts const solver,
+             fk::vector<P, mem_type::owner, input_mode> const &x_orig,
+             P const time, solve_opts const solver,
              bool const update_system = true);
 
 } // namespace asgard::time_advance

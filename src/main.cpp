@@ -245,7 +245,8 @@ int main(int argc, char **argv)
 
   // -- time loop
 
-  asgard::fk::vector<prec> f_val(initial_condition);
+  asgard::fk::vector<prec, asgard::mem_type::owner, asgard::resource::device>
+      f_val = initial_condition.clone_onto_device();
   asgard::node_out() << "--- begin time loop w/ dt " << pde->get_dt()
                      << " ---\n";
 
@@ -267,10 +268,10 @@ int main(int argc, char **argv)
             : (opts.use_imex_stepping ? "imex_time_advance"
                                       : "explicit_time_advance");
     const std::string time_id = asgard::tools::timer.start(time_str);
-    auto const sol            = asgard::time_advance::adaptive_advance(
+    auto sol                  = asgard::time_advance::adaptive_advance(
         method, *pde, operator_matrices, adaptive_grid, transformer, opts,
         f_val, time, update_system);
-    f_val.resize(sol.size()) = sol;
+    f_val = std::move(sol);
     asgard::tools::timer.stop(time_id);
 
     // print root mean squared error from analytic solution
@@ -282,7 +283,7 @@ int main(int argc, char **argv)
           transformer, degree, time + pde->get_dt());
 
       // calculate root mean squared error
-      auto const diff = f_val - analytic_solution;
+      auto const diff = f_val.clone_onto_host() - analytic_solution;
       auto const RMSE = [&diff]() {
         asgard::fk::vector<prec> squared(diff);
         std::transform(squared.begin(), squared.end(), squared.begin(),
@@ -414,8 +415,9 @@ int main(int argc, char **argv)
 
   // gather results from all ranks. not currently writing the result anywhere
   // yet, but rank 0 holds the complete result after this call
-  auto const final_result = gather_results(
-      f_val, adaptive_grid.get_distrib_plan(), my_rank, segment_size);
+  auto const final_result =
+      gather_results(f_val.clone_onto_host(), adaptive_grid.get_distrib_plan(),
+                     my_rank, segment_size);
 
   asgard::node_out() << asgard::tools::timer.report() << '\n';
 

@@ -291,6 +291,7 @@ distributed_grid<P>::coarsen(fk::vector<P> const &x, options const &cli_opts)
   auto const abs_compare = [](auto const a, auto const b) {
     return (std::abs(a) < std::abs(b));
   };
+
   P const max_elem =
       std::abs(*std::max_element(x.begin(), x.end(), abs_compare));
   P const global_max       = get_global_max<P>(max_elem, this->plan_);
