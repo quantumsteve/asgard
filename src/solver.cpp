@@ -95,20 +95,7 @@ simple_gmres(matrix_replacement mat, fk::vector<P, mem_type::owner, resrc> &x,
   }
   if (max_iter == parser::NO_USER_VALUE)
     max_iter = n;
-  if (max_iter < restart)
-  {
-    std::ostringstream err_msg;
-    err_msg << "Number of outer iterations " << max_iter
-            << " must be greater than " << restart << "!";
-    throw std::invalid_argument(err_msg.str());
-  }
-  if (max_iter > n)
-  {
-    std::ostringstream err_msg;
-    err_msg << "Number of outer iterations " << max_iter
-            << " must be less than " << n << "!";
-    throw std::invalid_argument(err_msg.str());
-  }
+
   P const norm_b = [&b]() {
     P const norm = fm::nrm2(b);
     return (norm == 0.0) ? static_cast<P>(1.0) : norm;
@@ -152,12 +139,6 @@ simple_gmres(matrix_replacement mat, fk::vector<P, mem_type::owner, resrc> &x,
               << " inner iterations\n";
     return gmres_info<P>{error, outer_iters, inner_iters};
   };
-
-  P error = compute_residual() / norm_b;
-  if (error < tolerance)
-  {
-    return done(error, 0, 0);
-  }
 
   fk::matrix<P, mem_type::owner, resrc> basis(n, restart + 1);
   fk::vector<P> krylov_proj(restart * (restart + 1) / 2);

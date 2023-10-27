@@ -46,6 +46,9 @@ namespace fk
 template<typename P, mem_type mem, resource resrc>
 class matrix;
 
+template< typename P, mem_type mem>
+using gpu_matrix = matrix<P, mem, resource::device>
+
 /*! One-dimensional tensor managing memory allocation and destruction.
  */
 template<typename P, mem_type mem = mem_type::owner,
