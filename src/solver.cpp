@@ -8,6 +8,20 @@
 
 namespace asgard::solver
 {
+
+class dense_preconditioner
+{
+public:
+dense_preconditioner(fk::matrix<P> const &M)
+{
+}
+void operator()(fk::vector<P> const &x_in)
+{
+}
+private:
+
+};
+
 // simple, node-local test version
 template<typename P>
 gmres_info<P>
@@ -21,8 +35,9 @@ simple_gmres(fk::matrix<P> const &A, fk::vector<P> &x, fk::vector<P> const &b,
     bool const trans_A = false;
     fm::gemv(A, x_in, y, trans_A, alpha, beta);
   };
+
   return simple_gmres(dense_matrix_wrapper, fk::vector<P, mem_type::view>(x), b,
-                      M, restart, max_iter, tolerance);
+                      dense_preconditioner, restart, max_iter, tolerance);
 }
 
 template<typename P, resource resrc>
@@ -63,27 +78,17 @@ int default_gmres_restarts(int num_cols)
 static int pos_from_indices(int i, int j) { return i + j * (j + 1) / 2; }
 
 // simple, node-local test version
-template<typename P, typename matrix_replacement, resource resrc>
+template<typename P, resource resrc, typename matrix_abstraction, typename preconditioner_abstraction>
 gmres_info<P>
-simple_gmres(matrix_replacement mat, fk::vector<P, mem_type::view, resrc> x,
+simple_gmres(matrix_abstraction mat, fk::vector<P, mem_type::view, resrc> x,
              fk::vector<P, mem_type::owner, resrc> const &b,
-             fk::matrix<P> const &M, int restart, int max_iter, P tolerance)
+             preconditioner_abstraction precon, int restart, int max_iter, P tolerance)
 {
   if (tolerance == parser::NO_USER_VALUE_FP)
     tolerance = std::is_same_v<float, P> ? 1e-6 : 1e-12;
   expect(tolerance >= std::numeric_limits<P>::epsilon());
   int const n = b.size();
   expect(n == x.size());
-
-  bool const do_precond = M.size() > 0;
-  std::vector<int> precond_pivots(n);
-  if (do_precond)
-  {
-    expect(M.ncols() == n);
-    expect(M.nrows() == n);
-  }
-  fk::matrix<P> precond(M);
-  bool precond_factored = false;
 
   if (restart == parser::NO_USER_VALUE)
     restart = default_gmres_restarts<P>(n);
@@ -125,25 +130,7 @@ simple_gmres(matrix_replacement mat, fk::vector<P, mem_type::view, resrc> x,
     P const beta  = 1.0;
     residual      = b;
     mat(x, residual, alpha, beta);
-    if (do_precond)
-    {
-      if constexpr (resrc == resource::device)
-      {
-#ifdef ASGARD_USE_CUDA
-        static_assert(resrc == resource::device);
-        auto res = residual.clone_onto_host();
-        precond_factored ? fm::getrs(precond, res, precond_pivots)
-                         : fm::gesv(precond, res, precond_pivots);
-        fk::copy_vector(residual, res);
-        precond_factored = true;
-#endif
-      }
-      else if constexpr (resrc == resource::host)
-      {
-        precond_factored ? fm::getrs(precond, residual, precond_pivots)
-                         : fm::gesv(precond, residual, precond_pivots);
-      }
-    }
+    preconditioner_abstraction(residual);
     return fm::nrm2(residual);
   };
 
@@ -185,22 +172,7 @@ simple_gmres(matrix_replacement mat, fk::vector<P, mem_type::view, resrc> x,
       fk::vector<P, mem_type::owner, resrc> new_basis(tmp.size());
       mat(tmp, new_basis, P{1.0}, P{0.0});
 
-      if (do_precond)
-      {
-        if constexpr (resrc == resource::device)
-        {
-#ifdef ASGARD_USE_CUDA
-          static_assert(resrc == resource::device);
-          auto new_basis_h = new_basis.clone_onto_host();
-          fm::getrs(precond, new_basis_h, precond_pivots);
-          fk::copy_vector(new_basis, new_basis_h);
-#endif
-        }
-        else if constexpr (resrc == resource::host)
-        {
-          fm::getrs(precond, new_basis, precond_pivots);
-        }
-      }
+      preconditioner_abstraction(new_basis);
 
       fk::matrix<P, mem_type::const_view, resrc> basis_v(basis, 0, n - 1, 0, i);
       fk::vector<P, mem_type::view> coeffs(krylov_proj, pos_from_indices(0, i),
