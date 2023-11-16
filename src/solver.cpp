@@ -144,15 +144,18 @@ simple_gmres(matrix_abstraction mat, fk::vector<P, mem_type::view, resrc> x,
   int const print_freq = restart / 3;
 
   fk::matrix<P, mem_type::owner, resrc> basis(n, restart + 1);
-  fk::vector<P> krylov_proj(restart * (restart + 1) / 2);
+  fk::vector<P, mem_type::owner, resrc> krylov_proj(restart * (restart + 1) /
+                                                    2);
+  fk::vector<P, mem_type::owner, resrc> nrm_d(1);
+  fk::vector<P> krylov_sol(restart + 1);
   fk::vector<P> sines(restart + 1);
   fk::vector<P> cosines(restart + 1);
 
-  int total_iterations{0};
-  int outer_iterations{0};
-  int inner_iterations{0};
+  int total_iterations = 0;
+  int outer_iterations = 0;
+  int inner_iterations = 0;
 
-  P inner_res{0.};
+  P inner_res = 0.;
   P outer_res{tolerance + P{1.}};
   while ((outer_res > tolerance) && (outer_iterations < max_outer_iterations))
   {
@@ -162,7 +165,6 @@ simple_gmres(matrix_abstraction mat, fk::vector<P, mem_type::view, resrc> x,
     precondition(scaled);
     ++total_iterations;
 
-    fk::vector<P> krylov_sol(n + 1);
     inner_res = fm::nrm2(scaled);
     scaled.scale(P{1.} / inner_res);
     krylov_sol[0] = inner_res;
@@ -179,46 +181,33 @@ simple_gmres(matrix_abstraction mat, fk::vector<P, mem_type::view, resrc> x,
       ++total_iterations;
       fk::matrix<P, mem_type::const_view, resrc> basis_v(basis, 0, n - 1, 0,
                                                          inner_iterations);
-      fk::vector<P, mem_type::view> coeffs(
+      fk::vector<P, mem_type::view, resrc> coeffs(
           krylov_proj, pos_from_indices(0, inner_iterations),
           pos_from_indices(inner_iterations, inner_iterations));
-      if constexpr (resrc == resource::device)
-      {
-#ifdef ASGARD_USE_CUDA
-        static_assert(resrc == resource::device);
-        fk::vector<P, mem_type::owner, resrc> coeffs_d(coeffs.size());
-        fm::gemv(basis_v, new_basis, coeffs_d, true, P{1.}, P{0.});
-        fm::gemv(basis_v, coeffs_d, new_basis, false, P{-1.}, P{1.});
-        fk::copy_vector(coeffs, coeffs_d);
-#endif
-      }
-      else if constexpr (resrc == resource::host)
-      {
-        fm::gemv(basis_v, new_basis, coeffs, true, P{1.}, P{0.});
-        fm::gemv(basis_v, coeffs, new_basis, false, P{-1.}, P{1.});
-      }
+      fm::gemv(basis_v, new_basis, coeffs, true, P{1.}, P{0.});
+      fm::gemv(basis_v, coeffs, new_basis, false, P{-1.}, P{1.});
       P const nrm = fm::nrm2(new_basis);
       new_basis.scale(P{1.} / nrm);
       for (int k = 0; k < inner_iterations; ++k)
       {
-        lib_dispatch::rot(1, coeffs.data(k), 1, coeffs.data(k + 1), 1,
-                          cosines[k], sines[k]);
+        lib_dispatch::rot<resrc>(1, coeffs.data(k), 1, coeffs.data(k + 1), 1,
+                                 cosines[k], sines[k]);
       }
 
       // compute given's rotation
-      P beta = nrm;
-      lib_dispatch::rotg(coeffs.data(inner_iterations), &beta,
-                         cosines.data(inner_iterations),
-                         sines.data(inner_iterations));
+      fk::memcpy_1d<resrc, resource::host>(nrm_d.data(0), &nrm, 1);
+      lib_dispatch::rotg<resrc>(coeffs.data(inner_iterations), nrm_d.data(0),
+                                cosines.data(inner_iterations),
+                                sines.data(inner_iterations));
 
-      inner_res =
-          std::abs(sines[inner_iterations] * krylov_sol[inner_iterations]);
+      inner_res = std::abs(sines[inner_iterations] * krylov_sol[inner_iterations]);
 
       if ((inner_res > tolerance) && (inner_iterations < restart))
       {
         lib_dispatch::rot(1, krylov_sol.data(inner_iterations), 1,
-                          krylov_sol.data(inner_iterations + 1), 1,
-                          cosines[inner_iterations], sines[inner_iterations]);
+                                 krylov_sol.data(inner_iterations + 1), 1,
+                                 cosines[inner_iterations],
+                                 sines[inner_iterations]);
       }
 
       if (inner_iterations % print_freq == 0)
@@ -231,18 +220,23 @@ simple_gmres(matrix_abstraction mat, fk::vector<P, mem_type::view, resrc> x,
 
     if (inner_iterations > 0)
     {
-      auto proj = fk::vector<P, mem_type::view>(
-          krylov_proj, 0,
-          pos_from_indices(inner_iterations - 1, inner_iterations - 1));
+      auto proj = fk::vector<P, mem_type::view, resrc>(
+          krylov_proj, 0, pos_from_indices(inner_iterations, inner_iterations));
       auto s_view =
-          fk::vector<P, mem_type::view>(krylov_sol, 0, inner_iterations - 1);
-      fm::tpsv(proj, s_view);
+          fk::vector<P, mem_type::view>(krylov_sol, 0, inner_iterations);
       fk::matrix<P, mem_type::view, resrc> m(basis, 0, basis.nrows() - 1, 0,
                                              inner_iterations - 1);
       if constexpr (resrc == resource::device)
-        fm::gemv(m, s_view.clone_onto_device(), x, false, P{1.}, P{1.});
+      {
+        auto s_view_d = s_view.clone_onto_device();
+        fm::tpsv(proj, s_view_d);
+        fm::gemv(m, s_view_d, x, false, P{1.}, P{1.});
+      }
       else if constexpr (resrc == resource::host)
+      {
+        fm::tpsv(proj, s_view);
         fm::gemv(m, s_view, x, false, P{1.}, P{1.});
+      }
     }
     ++outer_iterations;
     outer_res = inner_res;

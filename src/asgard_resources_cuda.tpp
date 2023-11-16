@@ -92,13 +92,10 @@ getCudaMemcpyKind(resource destination, resource source)
     else if (source == resource::device)
       return cudaMemcpyDeviceToHost;
   }
-  else if (destination == resource::device)
-  {
-    if (source == resource::host)
-      return cudaMemcpyHostToDevice;
-    else if (source == resource::device)
-      return cudaMemcpyDeviceToDevice;
-  }
+  if (source == resource::host)
+    return cudaMemcpyHostToDevice;
+  else
+    return cudaMemcpyDeviceToDevice;
 }
 
 template<resource out, resource in, typename P>
