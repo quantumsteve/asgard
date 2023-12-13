@@ -328,6 +328,7 @@ implicit_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
   auto const dt       = pde.get_dt();
   int const degree    = pde.get_dimensions()[0].get_degree();
   int const elem_size = static_cast<int>(std::pow(degree, pde.num_dims()));
+  auto const &plan    = adaptive_grid.get_distrib_plan();
 
 #ifdef ASGARD_USE_SCALAPACK
   auto const size = elem_size * adaptive_grid.get_subgrid(get_rank()).nrows();
@@ -340,9 +341,10 @@ implicit_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
   {
     auto const sources =
         get_sources(pde, adaptive_grid, transformer, time + dt);
-    fm::axpy(sources, x, dt);
+    fk::vector<P, mem_type::owner> sources_local(sources.size());
+    exchange_results(sources, sources_local, elem_size, plan, get_rank());
+    fm::axpy(sources_local, x, dt);
   }
-
   auto const &grid       = adaptive_grid.get_subgrid(get_rank());
   int const A_local_rows = elem_size * grid.nrows();
   int const A_local_cols = elem_size * grid.ncols();
@@ -358,7 +360,9 @@ implicit_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
   auto const bc = boundary_conditions::generate_scaled_bc(
       unscaled_parts[0], unscaled_parts[1], pde, grid.row_start, grid.row_stop,
       time + dt);
-  fm::axpy(bc, x, dt);
+  fk::vector<P, mem_type::owner> bc_local(bc.size());
+  exchange_results(bc, bc_local, elem_size, plan, get_rank());
+  fm::axpy(bc_local, x, dt);
 
   if ((solver != solve_opts::gmres && solver != solve_opts::bicgstab) && (first_time || update_system))
   {
@@ -443,6 +447,7 @@ implicit_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
         fx, x, restart, max_iter, tolerance);
 #else
     pde.gmres_outputs[0] = solver::simple_gmres_euler(
+        adaptive_grid, elem_size,
         pde.get_dt(), operator_matrices[matrix_entry::regular],
         fx, x, restart, max_iter, tolerance);
 #endif
@@ -882,9 +887,10 @@ imex_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
           pde.get_dt(), matrix_entry::imex_implicit, operator_matrices.kglobal,
           f_1, f, restart, max_iter, tolerance);
 #else
-      pde.gmres_outputs[0] = solver::simple_gmres_euler(
-          pde.get_dt(), operator_matrices[matrix_entry::imex_implicit],
-          f_1, f, restart, max_iter, tolerance);
+    pde.gmres_outputs[0] = solver::simple_gmres_euler(
+        adaptive_grid, elem_size,
+        pde.get_dt(), operator_matrices[matrix_entry::imex_implicit],
+        f_1, f, restart, max_iter, tolerance);
 #endif
     }
     else if (solver == solve_opts::bicgstab)
@@ -1000,9 +1006,10 @@ imex_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
           P{0.5} * pde.get_dt(), matrix_entry::imex_implicit, operator_matrices.kglobal,
           f_2, f, restart, max_iter, tolerance);
 #else
-      pde.gmres_outputs[1] = solver::simple_gmres_euler(
-          P{0.5} * pde.get_dt(), operator_matrices[matrix_entry::imex_implicit],
-          f_2, f, restart, max_iter, tolerance);
+    pde.gmres_outputs[1] = solver::simple_gmres_euler(
+        adaptive_grid, elem_size,
+        P{0.5} * pde.get_dt(), operator_matrices[matrix_entry::imex_implicit],
+        f_2, f, restart, max_iter, tolerance);
 #endif
     }
     else if (solver == solve_opts::bicgstab)
