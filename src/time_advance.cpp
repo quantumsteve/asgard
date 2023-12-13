@@ -436,11 +436,11 @@ implicit_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
     // TODO: do something better to save gmres output to pde
 #ifdef KRON_MODE_GLOBAL
     pde.gmres_outputs[0] = solver::simple_gmres_euler<P, resource::host>(
-        pde.get_dt(), matrix_entry::regular, operator_matrices.kglobal,
+        adaptive_grid, pde.get_dt(), matrix_entry::regular, operator_matrices.kglobal,
         fx, x, restart, max_iter, tolerance);
 #else
     pde.gmres_outputs[0] = solver::simple_gmres_euler(
-        pde.get_dt(), operator_matrices[matrix_entry::regular],
+        adaptive_grid, pde.get_dt(), operator_matrices[matrix_entry::regular],
         fx, x, restart, max_iter, tolerance);
 #endif
     return fx;
@@ -855,13 +855,12 @@ imex_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
         f_1 = x_prev;
       }
     }
-
 #ifdef KRON_MODE_GLOBAL
-    pde.gmres_outputs[0] = solver::simple_gmres_euler(
+    pde.gmres_outputs[0] = solver::simple_gmres_euler(adaptive_grid,
         pde.get_dt(), matrix_entry::imex_implicit, operator_matrices.kglobal,
         f_1, f, restart, max_iter, tolerance);
 #else
-    pde.gmres_outputs[0] = solver::simple_gmres_euler(
+    pde.gmres_outputs[0] = solver::simple_gmres_euler(adaptive_grid
         pde.get_dt(), operator_matrices[matrix_entry::imex_implicit],
         f_1, f, restart, max_iter, tolerance);
 #endif
@@ -956,11 +955,11 @@ imex_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
                                          adaptive_grid, program_opts);
 
 #ifdef KRON_MODE_GLOBAL
-    pde.gmres_outputs[1] = solver::simple_gmres_euler(
+    pde.gmres_outputs[1] = solver::simple_gmres_euler(adaptive_grid,
         P{0.5} * pde.get_dt(), matrix_entry::imex_implicit, operator_matrices.kglobal,
         f_2, f, restart, max_iter, tolerance);
 #else
-    pde.gmres_outputs[1] = solver::simple_gmres_euler(
+    pde.gmres_outputs[1] = solver::simple_gmres_euler(adaptive_grid,
         P{0.5} * pde.get_dt(), operator_matrices[matrix_entry::imex_implicit],
         f_2, f, restart, max_iter, tolerance);
 #endif

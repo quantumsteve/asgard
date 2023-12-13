@@ -1,5 +1,6 @@
 #pragma once
 
+#include "adapt.hpp"
 #include "asgard_kronmult_matrix.hpp"
 #include "asgard_matrix.hpp"
 #include "asgard_vector.hpp"
@@ -25,7 +26,9 @@ simple_gmres(fk::matrix<P> const &A, fk::vector<P> &x, fk::vector<P> const &b,
 // solves ( I - dt * mat ) * x = b
 template<typename P, resource resrc>
 gmres_info<P>
-simple_gmres_euler(const P dt, matrix_entry mentry,
+
+simple_gmres_euler(adapt::distributed_grid<P> const &adaptive_grid,
+                   const P dt, matrix_entry mentry,
                    global_kron_matrix<P> const &mat,
                    fk::vector<P, mem_type::owner, resrc> &x,
                    fk::vector<P, mem_type::owner, resrc> const &b,
@@ -34,7 +37,8 @@ simple_gmres_euler(const P dt, matrix_entry mentry,
 // solves ( I - dt * mat ) * x = b
 template<typename P, resource resrc>
 gmres_info<P>
-simple_gmres_euler(const P dt, kronmult_matrix<P> const &mat,
+simple_gmres_euler(adapt::distributed_grid<P> const &adaptive_grid,
+                   const P dt, kronmult_matrix<P> const &mat,
                    fk::vector<P, mem_type::owner, resrc> &x,
                    fk::vector<P, mem_type::owner, resrc> const &b,
                    int const restart, int const max_iter, P const tolerance);
