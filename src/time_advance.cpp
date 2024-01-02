@@ -440,7 +440,7 @@ implicit_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
         fx, x, restart, max_iter, tolerance);
 #else
     pde.gmres_outputs[0] = solver::simple_gmres_euler(
-        adaptive_grid, pde.get_dt(), operator_matrices[matrix_entry::regular],
+        adaptive_grid, elem_size, pde.get_dt(), operator_matrices[matrix_entry::regular],
         fx, x, restart, max_iter, tolerance);
 #endif
     return fx;
@@ -857,12 +857,12 @@ imex_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
     }
 #ifdef KRON_MODE_GLOBAL
     pde.gmres_outputs[0] = solver::simple_gmres_euler(adaptive_grid,
-        pde.get_dt(), matrix_entry::imex_implicit, operator_matrices.kglobal,
-        f_1, f, restart, max_iter, tolerance);
+                                                      pde.get_dt(), matrix_entry::imex_implicit, operator_matrices.kglobal,
+                                                      f_1, f, restart, max_iter, tolerance);
 #else
-    pde.gmres_outputs[0] = solver::simple_gmres_euler(adaptive_grid
-        pde.get_dt(), operator_matrices[matrix_entry::imex_implicit],
-        f_1, f, restart, max_iter, tolerance);
+    pde.gmres_outputs[0] = solver::simple_gmres_euler(adaptive_grid, elem_size,
+                                                      pde.get_dt(), operator_matrices[matrix_entry::imex_implicit],
+                                                      f_1, f, restart, max_iter, tolerance);
 #endif
     // save output of GMRES call to use in the second one
     f_1_output = f_1;
@@ -956,12 +956,12 @@ imex_advance(PDE<P> &pde, matrix_list<P> &operator_matrices,
 
 #ifdef KRON_MODE_GLOBAL
     pde.gmres_outputs[1] = solver::simple_gmres_euler(adaptive_grid,
-        P{0.5} * pde.get_dt(), matrix_entry::imex_implicit, operator_matrices.kglobal,
-        f_2, f, restart, max_iter, tolerance);
+                                                      P{0.5} * pde.get_dt(), matrix_entry::imex_implicit, operator_matrices.kglobal,
+                                                      f_2, f, restart, max_iter, tolerance);
 #else
-    pde.gmres_outputs[1] = solver::simple_gmres_euler(adaptive_grid,
-        P{0.5} * pde.get_dt(), operator_matrices[matrix_entry::imex_implicit],
-        f_2, f, restart, max_iter, tolerance);
+    pde.gmres_outputs[1] = solver::simple_gmres_euler(adaptive_grid, elem_size,
+                                                      P{0.5} * pde.get_dt(), operator_matrices[matrix_entry::imex_implicit],
+                                                      f_2, f, restart, max_iter, tolerance);
 #endif
 
     tools::timer.stop("implicit_2_solve");

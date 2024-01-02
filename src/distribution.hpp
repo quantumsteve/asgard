@@ -238,6 +238,9 @@ template<typename P, mem_type src_mem, mem_type dst_mem, resource resrc>
 void reduce_results(fk::vector<P, src_mem, resrc> const &source,
                     fk::vector<P, dst_mem, resrc> &dest,
                     distribution_plan const &plan, int const my_rank);
+void reduce_results(double const source,
+                    double &dest,
+                    distribution_plan const &plan, int const my_rank);
 
 // generate a message list for each rank for exchange_results function;
 // conceptually an internal component function, exposed for testing

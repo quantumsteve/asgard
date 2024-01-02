@@ -97,7 +97,7 @@ void test_kronmult(parser const &parse, P const tol_factor)
   P const dt = pde->get_dt();
 
   // perform matrix-free gmres
-  fk::vector<P> const matrix_free_gmres = [&adaptive_grid, &operator_matrices, &gold, &b,
+  fk::vector<P> const matrix_free_gmres = [&adaptive_grid, elem_size, &operator_matrices, &gold, &b,
                                            dt]() {
     fk::vector<P> x(gold);
     int const restart  = parser::DEFAULT_GMRES_INNER_ITERATIONS;
@@ -107,7 +107,7 @@ void test_kronmult(parser const &parse, P const tol_factor)
     solver::simple_gmres_euler(adaptive_grid, dt, matrix_entry::regular, operator_matrices.kglobal, x,
                                b, restart, max_iter, tolerance);
 #else
-    solver::simple_gmres_euler(adaptive_grid, dt, operator_matrices[matrix_entry::regular], x,
+    solver::simple_gmres_euler(adaptive_grid, elem_size, dt, operator_matrices[matrix_entry::regular], x,
                                b, restart, max_iter, tolerance);
 #endif
     return x;

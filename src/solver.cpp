@@ -75,18 +75,21 @@ simple_gmres(fk::matrix<P> const &A, fk::vector<P> &x, fk::vector<P> const &b,
 
 template<typename P, resource resrc>
 gmres_info<P>
-simple_gmres_euler(adapt::distributed_grid<P> const &adaptive_grid,
+simple_gmres_euler(adapt::distributed_grid<P> const &adaptive_grid, int elem_size,
                    const P dt, kronmult_matrix<P> const &mat,
                    fk::vector<P, mem_type::owner, resrc> &x,
                    fk::vector<P, mem_type::owner, resrc> const &b,
                    int const restart, int const max_iter, P const tolerance)
 {
-  return simple_gmres(adaptive_grid,
+  return simple_gmres(adaptive_grid, elem_size,
       [&](P const alpha, fk::vector<P, mem_type::view, resrc> const x_in,
           P const beta, fk::vector<P, mem_type::view, resrc> y) -> void {
         tools::time_event performance("kronmult - implicit", mat.flops());
-        mat.template apply<resrc>(-dt * alpha, x_in.data(), beta, y.data());
-        lib_dispatch::axpy<resrc>(y.size(), alpha, x_in.data(), 1, y.data(), 1);
+        auto plan = adaptive_grid.get_distrib_plan();
+        fk::vector<P,mem_type::owner, resrc> y_local(y);
+        mat.template apply<resrc>(P{2.}, x_in.data(), P{0.}, y_local.data());
+        reduce_results(y_local, y, plan, get_rank());
+        //lib_dispatch::axpy<resrc>(y.size(), alpha, x_in.data(), 1, y.data(), 1);
       },
       fk::vector<P, mem_type::view, resrc>(x), b, no_op_preconditioner<P>(),
       restart, max_iter, tolerance);
@@ -120,7 +123,7 @@ simple_gmres_euler(adapt::distributed_grid<P> const &adaptive_grid,
                    int const restart, int const max_iter, P const tolerance)
 {
   auto const &pc = mat.template get_diagonal_preconditioner<resrc>();
-
+  ignore(adaptive_grid);
   return simple_gmres(
       [&](P const alpha, fk::vector<P, mem_type::view, resrc> const x_in,
           P const beta, fk::vector<P, mem_type::view, resrc> y) -> void {
@@ -321,7 +324,7 @@ simple_gmres(matrix_abstraction mat, fk::vector<P, mem_type::view, resrc> x,
 template<typename P, resource resrc, typename matrix_abstraction,
          typename preconditioner_abstraction>
 gmres_info<P>
-simple_gmres(adapt::distributed_grid<P> const &adaptive_grid,
+simple_gmres(adapt::distributed_grid<P> const &adaptive_grid, int elem_size,
              matrix_abstraction mat, fk::vector<P, mem_type::view, resrc> x,
              fk::vector<P, mem_type::owner, resrc> const &b,
              preconditioner_abstraction precondition, int restart,
@@ -351,12 +354,13 @@ simple_gmres(adapt::distributed_grid<P> const &adaptive_grid,
 
   // controls how often the inner residual print occurs
   int const print_freq = restart / 3;
-
+  expect(elem_size);
   fk::matrix<P, mem_type::owner, resrc> basis(n, restart + 1);
   fk::vector<P> krylov_proj(restart * (restart + 1) / 2);
   fk::vector<P> sines(restart + 1);
   fk::vector<P> cosines(restart + 1);
   fk::vector<P> krylov_sol(restart + 1);
+  auto plan = adaptive_grid.get_distrib_plan();
 
   int total_iterations = 0;
   int outer_iterations = 0;
@@ -367,31 +371,33 @@ simple_gmres(adapt::distributed_grid<P> const &adaptive_grid,
   while ((outer_res > tolerance) && (outer_iterations < max_outer_iterations))
   {
     fk::vector<P, mem_type::view, resrc> scaled(basis, 0, 0, n - 1);
-    std::cout << get_rank() << " " << n << std::endl;
     scaled = b;
+    //scaled_tmp_v.print();
     mat(P{-1.}, x, P{1.}, scaled);
+    scaled.print();
     precondition(scaled);
     ++total_iterations;
-
-    inner_res = fm::nrm2(scaled);
+    P const local_inner_res = std::accumulate(scaled.begin(), scaled.end(),P{0}, [](P sum, P elem){ return sum + elem*elem;});
+    reduce_results(local_inner_res, inner_res, plan, get_rank());
+    inner_res = std::sqrt(inner_res);
+    //std::cout << get_rank() << " " << inner_res << std::endl;
     scaled.scale(P{1.} / inner_res);
     krylov_sol[0] = inner_res;
 
     inner_iterations = 0;
     while ((inner_res > tolerance) && (inner_iterations < restart))
     {
-      fk::vector<P, mem_type::view, resrc> const tmp(basis, inner_iterations, 0,
-                                                     n - 1);
-      fk::vector<P, mem_type::view, resrc> new_basis(
-          basis, inner_iterations + 1, 0, n - 1);
-      mat(P{1.}, tmp, P{0.}, new_basis);
+      fk::vector<P, mem_type::view, resrc> const tmp(basis, inner_iterations, 0, n - 1);
+      fk::vector<P, mem_type::view, resrc> new_basis(basis, inner_iterations + 1, 0, n - 1);
+      fk::vector<P, mem_type::owner, resrc> new_basis_tmp(new_basis.size());
+      fk::vector<P, mem_type::view, resrc> new_basis_tmp_v(new_basis_tmp);
+      mat(P{1.}, tmp, P{0.}, new_basis_tmp_v);
+      reduce_results(new_basis_tmp, new_basis, plan, get_rank());
+      //new_basis.print();
       precondition(new_basis);
       ++total_iterations;
-      fk::matrix<P, mem_type::const_view, resrc> basis_v(basis, 0, n - 1, 0,
-                                                         inner_iterations);
-      fk::vector<P, mem_type::view> coeffs(
-          krylov_proj, pos_from_indices(0, inner_iterations),
-          pos_from_indices(inner_iterations, inner_iterations));
+      fk::matrix<P, mem_type::const_view, resrc> basis_v(basis, 0, n - 1, 0, inner_iterations);
+      fk::vector<P, mem_type::view> coeffs(krylov_proj, pos_from_indices(0, inner_iterations), pos_from_indices(inner_iterations, inner_iterations));
       if constexpr (resrc == resource::device)
       {
 #ifdef ASGARD_USE_CUDA
@@ -404,15 +410,20 @@ simple_gmres(adapt::distributed_grid<P> const &adaptive_grid,
       }
       else if constexpr (resrc == resource::host)
       {
-        auto &grid = adaptive_grid.get_subgrid(get_rank());
-        ignore(grid);
-        //std::cout << get_rank() << " " << grid.nrows() << " " << grid.ncols() << std::endl; 
-        std::cout << get_rank() << " " << basis_v.nrows() << " " << basis_v.ncols() << " " << new_basis.size() << std::endl;
-        fm::gemv(basis_v, new_basis, coeffs, true, P{1.}, P{0.});
+        fk::vector<P, mem_type::owner, resrc> coeffs_tmp(coeffs.size());
+        fm::gemv(basis_v, new_basis, coeffs_tmp, true, P{1.}, P{0.});
+        //basis_v.print();
+        reduce_results(coeffs_tmp, coeffs, plan, get_rank());
+        //coeffs.print();
         fm::gemv(basis_v, coeffs, new_basis, false, P{-1.}, P{1.});
       }
-      P const nrm = fm::nrm2(new_basis);
+      P const local_nrm = std::pow(fm::nrm2(new_basis), 2);
+      P nrm;
+      MPI_Allreduce(&local_nrm, &nrm, 1, MPI_DOUBLE, MPI_SUM,
+              MPI_COMM_WORLD);
+      nrm = std::sqrt(nrm);
       new_basis.scale(P{1.} / nrm);
+
       for (int k = 0; k < inner_iterations; ++k)
       {
         lib_dispatch::rot(1, coeffs.data(k), 1, coeffs.data(k + 1), 1,
@@ -596,7 +607,7 @@ simple_gmres(fk::matrix<double> const &A, fk::vector<double> &x,
 
 
 template gmres_info<double>
-simple_gmres_euler(adapt::distributed_grid<double> const &adaptive_grid,  const double dt, kronmult_matrix<double> const &mat,
+simple_gmres_euler(adapt::distributed_grid<double> const &adaptive_grid, int elem_size, const double dt, kronmult_matrix<double> const &mat,
                    fk::vector<double> &x, fk::vector<double> const &b,
                    int const restart, int const max_iter,
                    double const tolerance);
@@ -624,7 +635,7 @@ simple_gmres_euler(const double dt, kronmult_matrix<double> const &mat,
                    double const tolerance);
 #ifdef ASGARD_USE_CUDA
 template gmres_info<double> simple_gmres_euler(
-    adapt::distributed_grid<double> const &adaptive_grid,
+    adapt::distributed_grid<double> const &adaptive_grid, int elem_size,
     const double dt, kronmult_matrix<double> const &mat,
     fk::vector<double, mem_type::owner, resource::device> &x,
     fk::vector<double, mem_type::owner, resource::device> const &b,
@@ -655,7 +666,7 @@ simple_gmres(fk::matrix<float> const &A, fk::vector<float> &x,
              int const restart, int const max_iter, float const tolerance);
 
 template gmres_info<float>
-simple_gmres_euler(adapt::distributed_grid<float> const &adaptive_grid,
+simple_gmres_euler(adapt::distributed_grid<float> const &adaptive_grid, int elem_size,
                    const float dt, kronmult_matrix<float> const &mat,
                    fk::vector<float> &x, fk::vector<float> const &b,
                    int const restart, int const max_iter,
@@ -684,7 +695,7 @@ simple_gmres_euler(const float dt, kronmult_matrix<float> const &mat,
                    float const tolerance);
 #ifdef ASGARD_USE_CUDA
 template gmres_info<float> simple_gmres_euler(
-    adapt::distributed_grid<float> const &adaptive_grid,
+    adapt::distributed_grid<float> const &adaptive_grid, int elem_size,
     const float dt, kronmult_matrix<float> const &mat,
     fk::vector<float, mem_type::owner, resource::device> &x,
     fk::vector<float, mem_type::owner, resource::device> const &b,

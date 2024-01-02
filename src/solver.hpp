@@ -27,7 +27,7 @@ simple_gmres(fk::matrix<P> const &A, fk::vector<P> &x, fk::vector<P> const &b,
 template<typename P, resource resrc>
 gmres_info<P>
 
-simple_gmres_euler(adapt::distributed_grid<P> const &adaptive_grid,
+simple_gmres_euler(adapt::distributed_grid<P> const &adaptive_grid, int elem_size,
                    const P dt, matrix_entry mentry,
                    global_kron_matrix<P> const &mat,
                    fk::vector<P, mem_type::owner, resrc> &x,
