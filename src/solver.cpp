@@ -899,12 +899,6 @@ simple_gmres_euler(adapt::distributed_grid<double> const &adaptive_grid, int con
                    fk::vector<double> &x, fk::vector<double> const &b,
                    int const restart, int const max_iter,
                    double const tolerance);
-
-template gmres_info<double>
-simple_gmres_euler(const double dt, kronmult_matrix<double> const &mat,
-                   fk::vector<double> &x, fk::vector<double> const &b,
-                   int const restart, int const max_iter,
-                   double const tolerance);
 #ifdef ASGARD_USE_CUDA
 template gmres_info<double> simple_gmres_euler(
     adapt::distributed_grid<double> const &adaptive_grid, int const elem_size,
@@ -998,7 +992,7 @@ simple_gmres_euler(const float dt, matrix_entry mentry,
 
 #ifdef ASGARD_USE_CUDA
 template gmres_info<float>
-simple_gmres_euler(adapt::distributed_grid<float> const &adaptive_grid, const float dt, matrix_entry mentry,
+simple_gmres_euler(const float dt, matrix_entry mentry,
                    global_kron_matrix<float> const &mat,
                    fk::vector<float, mem_type::owner, resource::device> &x,
                    fk::vector<float, mem_type::owner, resource::device> const &b,
@@ -1013,7 +1007,7 @@ simple_gmres_euler(adapt::distributed_grid<float> const &adaptive_grid, int cons
                    float const tolerance);
 #ifdef ASGARD_USE_CUDA
 template gmres_info<float> simple_gmres_euler(
-    adapt::distributed_grid<float> const &adaptive_grid,
+    adapt::distributed_grid<float> const &adaptive_grid, int const elem_size,
     float const dt, kronmult_matrix<float> const &mat,
     fk::vector<float, mem_type::owner, resource::device> &x,
     fk::vector<float, mem_type::owner, resource::device> const &b,
