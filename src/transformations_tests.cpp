@@ -6,7 +6,9 @@
 #include "tools.hpp"
 #include "transformations.hpp"
 #include <climits>
+#include <experimental/iterator>
 #include <numeric>
+#include <sstream>
 
 static auto const transformations_base_dir = gold_base_dir / "transformations";
 
@@ -20,9 +22,15 @@ void test_combine_dimensions(PDE<P> const &pde, P const time = 1.0,
   int const dims = pde.num_dims;
 
   // FIXME assuming uniform degree across dims
-  dimension const dim = pde.get_dimensions()[0];
-  int const lev       = dim.get_level();
-  int const deg       = dim.get_degree();
+  int const deg = pde.get_dimensions()[0].get_degree();
+
+  std::vector<int> levels;
+  for (auto const &dim : pde.get_dimensions())
+    levels.push_back(dim.get_level());
+
+  int const lev = levels[0];
+  std::stringstream stream;
+  std::copy(std::begin(levels), std::end(levels), std::experimental::make_ostream_joiner(stream, ' '));
 
   std::string const filename =
       "combine_dim_dim" + std::to_string(dims) + "_deg" + std::to_string(deg) +
@@ -30,7 +38,7 @@ void test_combine_dimensions(PDE<P> const &pde, P const time = 1.0,
 
   std::string const grid_str = full_grid ? "-f" : "";
   options const o            = make_options(
-      {"-d", std::to_string(deg), "-l", std::to_string(lev), grid_str});
+      {"-d", std::to_string(deg), "-l", stream.str(), grid_str});
 
   elements::table const t(o, pde);
 
@@ -38,7 +46,7 @@ void test_combine_dimensions(PDE<P> const &pde, P const time = 1.0,
   P counter = 1.0;
   for (int i = 0; i < pde.num_dims; ++i)
   {
-    int const vect_size         = dims * fm::two_raised_to(lev);
+    int const vect_size         = dims * fm::two_raised_to(levels[i]);
     fk::vector<P> const vect_1d = [&counter, vect_size] {
       fk::vector<P> vect(vect_size);
       std::iota(vect.begin(), vect.end(), static_cast<P>(counter));
@@ -239,6 +247,18 @@ TEMPLATE_TEST_CASE("wavelet_to_realspace", "[transformations]", test_precs)
     int const level  = 4;
     int const degree = 5;
     auto const pde = make_PDE<TestType>(PDE_opts::continuity_2, level, degree);
+    auto const gold_filename =
+        transformations_base_dir / "wavelet_to_realspace_continuity_2.dat";
+
+    auto constexpr tol_factor = get_tolerance<TestType>(100000);
+    test_wavelet_to_realspace(*pde, gold_filename, tol_factor);
+  }
+
+  SECTION("wavelet_to_realspace_2_different_levels")
+  {
+    fk::vector<int> const level{4, 6};
+    int const degree = 5;
+    auto const pde   = make_PDE<TestType>(PDE_opts::continuity_2, level, degree);
     auto const gold_filename =
         transformations_base_dir / "wavelet_to_realspace_continuity_2.dat";
 
