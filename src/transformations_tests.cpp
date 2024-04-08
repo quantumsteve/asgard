@@ -22,15 +22,9 @@ void test_combine_dimensions(PDE<P> const &pde, P const time = 1.0,
   int const dims = pde.num_dims;
 
   // FIXME assuming uniform degree across dims
-  int const deg = pde.get_dimensions()[0].get_degree();
-
-  std::vector<int> levels;
-  for (auto const &dim : pde.get_dimensions())
-    levels.push_back(dim.get_level());
-
-  int const lev = levels[0];
-  std::stringstream stream;
-  std::copy(std::begin(levels), std::end(levels), std::experimental::make_ostream_joiner(stream, ' '));
+  dimension const dim = pde.get_dimensions()[0];
+  int const lev       = dim.get_level();
+  int const deg       = dim.get_degree();
 
   std::string const filename =
       "combine_dim_dim" + std::to_string(dims) + "_deg" + std::to_string(deg) +
@@ -38,7 +32,7 @@ void test_combine_dimensions(PDE<P> const &pde, P const time = 1.0,
 
   std::string const grid_str = full_grid ? "-f" : "";
   options const o            = make_options(
-      {"-d", std::to_string(deg), "-l", stream.str(), grid_str});
+      {"-d", std::to_string(deg), "-l", std::to_string(lev), grid_str});
 
   elements::table const t(o, pde);
 
@@ -46,7 +40,7 @@ void test_combine_dimensions(PDE<P> const &pde, P const time = 1.0,
   P counter = 1.0;
   for (int i = 0; i < pde.num_dims; ++i)
   {
-    int const vect_size         = dims * fm::two_raised_to(levels[i]);
+    int const vect_size         = dims * fm::two_raised_to(lev);
     fk::vector<P> const vect_1d = [&counter, vect_size] {
       fk::vector<P> vect(vect_size);
       std::iota(vect.begin(), vect.end(), static_cast<P>(counter));
@@ -182,13 +176,18 @@ TEMPLATE_TEST_CASE("forward multi-wavelet transform", "[transformations]",
 
 template<typename P>
 void test_wavelet_to_realspace(PDE<P> const &pde,
-                               std::string const &gold_filename,
+                               std::filesystem::path const &gold_filename,
                                P const tol_factor)
 {
-  // FIXME assume uniform level and degree
-  auto const &d     = pde.get_dimensions()[0];
-  auto const level  = d.get_level();
-  auto const degree = d.get_degree();
+  int const degree = pde.get_dimensions()[0].get_degree();
+
+  std::vector<int> levels;
+  for (auto const &dim : pde.get_dimensions())
+    levels.push_back(dim.get_level());
+
+  int const level = levels[0];
+  std::stringstream stream;
+  std::copy(std::begin(levels), std::end(levels), std::experimental::make_ostream_joiner(stream, ' '));
 
   auto const opts = make_options({"-l", std::to_string(level)});
   basis::wavelet_transform<P, resource::host> const transformer(opts, pde);
