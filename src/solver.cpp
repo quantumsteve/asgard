@@ -137,6 +137,7 @@ simple_gmres_euler(const P dt, matrix_entry mentry,
       },
       restart, max_iter, tolerance);
 }
+
 template<typename P, resource resrc>
 gmres_info<P>
 bicgstab_euler(const P dt, matrix_entry mentry,
@@ -246,7 +247,6 @@ bicgstab_euler(const P dt, kronmult_matrix<P> const &mat,
       fk::vector<P, mem_type::view, resrc>(x), b, no_op_preconditioner<P>(),
       max_iter, tolerance);
 }
-#endif
 
 template<typename P, resource resrc>
 gmres_info<P>
@@ -283,6 +283,8 @@ simple_gmres_euler(adapt::distributed_grid<P> const &adaptive_grid, int const el
 #endif
   return simple_gmres_euler(dt, mat, x, b, restart, max_iter, tolerance);
 }
+#endif
+
 
 /*! Generates a default number inner iterations when no use input is given
  * \param num_cols Number of columns in the A matrix.
